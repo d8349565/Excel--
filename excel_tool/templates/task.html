@@ -1,0 +1,466 @@
+{% extends "base.html" %}
+
+{% block title %}任务状态 - Excel/CSV 汇总工具{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{{ url_for('index') }}">首页</a></li>
+                <li class="breadcrumb-item active">任务状态</li>
+            </ol>
+        </nav>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-gear"></i> 任务执行状态
+                    <span class="badge bg-{{ 'success' if task.status == 'completed' else 'warning' if task.status == 'running' else 'danger' if task.status in ['failed', 'timeout'] else 'secondary' }} ms-2">
+                        {{ {
+                            'pending': '等待中',
+                            'running': '执行中',
+                            'completed': '已完成',
+                            'failed': '失败',
+                            'timeout': '超时'
+                        }[task.status] or task.status }}
+                    </span>
+                </h5>
+            </div>
+            <div class="card-body">
+                <!-- 基本信息 -->
+                <div class="row mb-3">
+                    <div class="col-sm-3"><strong>任务ID:</strong></div>
+                    <div class="col-sm-9"><code>{{ task.task_id }}</code></div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-sm-3"><strong>创建时间:</strong></div>
+                    <div class="col-sm-9">{{ task.created_at[:19].replace('T', ' ') }}</div>
+                </div>
+                {% if task.started_at %}
+                <div class="row mb-3">
+                    <div class="col-sm-3"><strong>开始时间:</strong></div>
+                    <div class="col-sm-9">{{ task.started_at[:19].replace('T', ' ') }}</div>
+                </div>
+                {% endif %}
+                {% if task.completed_at %}
+                <div class="row mb-3">
+                    <div class="col-sm-3"><strong>完成时间:</strong></div>
+                    <div class="col-sm-9">{{ task.completed_at[:19].replace('T', ' ') }}</div>
+                </div>
+                {% endif %}
+                
+                <!-- 进度条 -->
+                <div class="row mb-3">
+                    <div class="col-sm-3"><strong>执行进度:</strong></div>
+                    <div class="col-sm-9">
+                        <div class="progress">
+                            <div class="progress-bar 
+                                {{ 'bg-success' if task.status == 'completed' else 'bg-danger' if task.status in ['failed', 'timeout'] else 'progress-bar-striped progress-bar-animated' if task.status == 'running' else '' }}" 
+                                role="progressbar" 
+                                style="width: {{ task.progress }}%">
+                                {{ task.progress }}%
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 错误信息 -->
+                {% if task.error_message %}
+                <div class="alert alert-danger">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    <strong>错误:</strong> {{ task.error_message }}
+                </div>
+                {% endif %}
+                
+                <!-- 结果信息 -->
+                {% if task.result %}
+                <div class="card mt-3">
+                    <div class="card-header">
+                        <h6 class="card-title mb-0">
+                            <i class="bi bi-check-circle text-success"></i> 处理结果
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <p><strong>结果文件:</strong> {{ task.result.result_file }}</p>
+                                <p><strong>导出格式:</strong> {{ task.result.export_format.upper() }}</p>
+                            </div>
+                            <div class="col-md-6">
+                                <p><strong>总行数:</strong> {{ task.result.total_rows }}</p>
+                                <p><strong>总列数:</strong> {{ task.result.total_columns }}</p>
+                            </div>
+                        </div>
+                        
+                        <!-- 处理统计 -->
+                        {% if task.result.summary and task.result.summary.stats %}
+                        <div class="row mt-3">
+                            <div class="col-12">
+                                <h6>处理统计:</h6>
+                                <div class="row">
+                                    <div class="col-md-3">
+                                        <div class="text-center">
+                                            <div class="h4 text-primary">{{ task.result.summary.stats.input_rows }}</div>
+                                            <small class="text-muted">输入行数</small>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="text-center">
+                                            <div class="h4 text-success">{{ task.result.summary.stats.output_rows }}</div>
+                                            <small class="text-muted">输出行数</small>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="text-center">
+                                            <div class="h4 text-warning">{{ task.result.summary.stats.duplicates_removed }}</div>
+                                            <small class="text-muted">去重行数</small>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="text-center">
+                                            <div class="h4 text-danger">{{ task.result.summary.stats.errors_count }}</div>
+                                            <small class="text-muted">错误数量</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+                        
+                        <!-- 下载按钮 -->
+                        <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-3">
+                            <a href="{{ url_for('download_file', filename=task.result.result_file) }}" 
+                               class="btn btn-success">
+                                <i class="bi bi-download"></i> 下载结果文件
+                            </a>
+                            {% if task.result.summary and task.result.summary.errors %}
+                            <button class="btn btn-warning" onclick="showErrorSamples()">
+                                <i class="bi bi-exclamation-triangle"></i> 查看错误样例
+                            </button>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+                
+                <!-- 操作按钮 -->
+                <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-3">
+                    <a href="{{ url_for('index') }}" class="btn btn-primary">
+                        <i class="bi bi-arrow-left"></i> 返回首页
+                    </a>
+                    {% if task.status in ['running', 'pending'] %}
+                    <button class="btn btn-outline-secondary" onclick="refreshStatus()">
+                        <i class="bi bi-arrow-clockwise"></i> 刷新状态
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="card-title mb-0">
+                    <i class="bi bi-list-ul"></i> 执行日志
+                </h6>
+            </div>
+            <div class="card-body">
+                <div id="taskLogs" style="max-height: 400px; overflow-y: auto;">
+                    {% if task.logs %}
+                        {% for log in task.logs %}
+                        <div class="mb-2">
+                            <small class="text-muted">{{ log.timestamp[:19].replace('T', ' ') }}</small>
+                            <div>{{ log.message }}</div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="text-muted">暂无执行日志</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <!-- 任务参数 -->
+        <div class="card mt-3">
+            <div class="card-header">
+                <h6 class="card-title mb-0">
+                    <i class="bi bi-gear"></i> 任务参数
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="accordion" id="parametersAccordion">
+                    <!-- 文件配置 -->
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" 
+                                    data-bs-toggle="collapse" data-bs-target="#fileConfigs">
+                                文件配置 ({{ task.parameters.file_configs | length }})
+                            </button>
+                        </h2>
+                        <div id="fileConfigs" class="accordion-collapse collapse" 
+                             data-bs-parent="#parametersAccordion">
+                            <div class="accordion-body">
+                                {% for config in task.parameters.file_configs %}
+                                <div class="mb-2">
+                                    <strong>{{ config.source_name }}</strong>
+                                    <br>
+                                    <small class="text-muted">
+                                        Sheet: {{ config.sheet_name or 'CSV' }}
+                                        | 表头行: {{ config.header_row + 1 }}
+                                    </small>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 清洗选项 -->
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" 
+                                    data-bs-toggle="collapse" data-bs-target="#cleaningOptions">
+                                清洗选项
+                            </button>
+                        </h2>
+                        <div id="cleaningOptions" class="accordion-collapse collapse" 
+                             data-bs-parent="#parametersAccordion">
+                            <div class="accordion-body">
+                                {% for key, value in task.parameters.cleaning_options.items() %}
+                                <div class="mb-1">
+                                    <small>
+                                        <strong>{{ {
+                                            'remove_empty_rows': '去除空行',
+                                            'clean_numeric': '数值清洗',
+                                            'parse_dates': '日期解析',
+                                            'remove_duplicates': '去除重复',
+                                            'merge_strategy': '合并策略',
+                                            'keep_strategy': '去重策略'
+                                        }[key] or key }}:</strong>
+                                        {{ 'Yes' if value == True else 'No' if value == False else value }}
+                                    </small>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 导出选项 -->
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" 
+                                    data-bs-toggle="collapse" data-bs-target="#exportOptions">
+                                导出选项
+                            </button>
+                        </h2>
+                        <div id="exportOptions" class="accordion-collapse collapse" 
+                             data-bs-parent="#parametersAccordion">
+                            <div class="accordion-body">
+                                <div class="mb-1">
+                                    <small><strong>格式:</strong> {{ task.parameters.export_options.format.upper() }}</small>
+                                </div>
+                                <div class="mb-1">
+                                    <small><strong>文件名:</strong> {{ task.parameters.export_options.filename }}</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 错误样例模态框 -->
+<div class="modal fade" id="errorSamplesModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-exclamation-triangle text-warning"></i> 错误样例
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="errorSamplesContent">
+                <!-- 错误样例内容 -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const taskId = '{{ task.task_id }}';
+const taskStatus = '{{ task.status }}';
+
+// 自动刷新状态
+let autoRefreshInterval = null;
+
+if (taskStatus === 'running' || taskStatus === 'pending') {
+    autoRefreshInterval = setInterval(refreshStatus, 3000); // 每3秒刷新
+}
+
+// 刷新状态
+function refreshStatus() {
+    fetch(`/api/task/${taskId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                updateTaskStatus(data.task);
+            }
+        })
+        .catch(error => {
+            console.error('刷新状态失败:', error);
+        });
+}
+
+// 更新任务状态
+function updateTaskStatus(task) {
+    // 更新进度条
+    const progressBar = document.querySelector('.progress-bar');
+    progressBar.style.width = task.progress + '%';
+    progressBar.textContent = task.progress + '%';
+    
+    // 更新状态标签
+    const statusBadge = document.querySelector('.badge');
+    const statusText = {
+        'pending': '等待中',
+        'running': '执行中',
+        'completed': '已完成',
+        'failed': '失败',
+        'timeout': '超时'
+    }[task.status] || task.status;
+    
+    statusBadge.textContent = statusText;
+    statusBadge.className = `badge ms-2 bg-${
+        task.status === 'completed' ? 'success' : 
+        task.status === 'running' ? 'warning' : 
+        ['failed', 'timeout'].includes(task.status) ? 'danger' : 'secondary'
+    }`;
+    
+    // 更新进度条样式
+    if (task.status === 'completed') {
+        progressBar.className = 'progress-bar bg-success';
+        clearInterval(autoRefreshInterval);
+    } else if (['failed', 'timeout'].includes(task.status)) {
+        progressBar.className = 'progress-bar bg-danger';
+        clearInterval(autoRefreshInterval);
+    } else if (task.status === 'running') {
+        progressBar.className = 'progress-bar progress-bar-striped progress-bar-animated';
+    }
+    
+    // 更新日志
+    if (task.logs && task.logs.length > 0) {
+        updateTaskLogs(task.logs);
+    }
+    
+    // 如果任务完成，刷新页面以显示结果
+    if (task.status === 'completed' && !document.querySelector('.btn-success')) {
+        setTimeout(() => {
+            location.reload();
+        }, 1000);
+    }
+    
+    // 显示错误信息
+    if (task.error_message && !document.querySelector('.alert-danger')) {
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'alert alert-danger';
+        errorDiv.innerHTML = `
+            <i class="bi bi-exclamation-triangle"></i>
+            <strong>错误:</strong> ${task.error_message}
+        `;
+        
+        const progressRow = document.querySelector('.progress').closest('.row');
+        progressRow.parentNode.insertBefore(errorDiv, progressRow.nextSibling);
+    }
+}
+
+// 更新任务日志
+function updateTaskLogs(logs) {
+    const logsContainer = document.getElementById('taskLogs');
+    
+    let html = '';
+    if (logs.length > 0) {
+        logs.forEach(log => {
+            html += `
+                <div class="mb-2">
+                    <small class="text-muted">${log.timestamp.slice(0, 19).replace('T', ' ')}</small>
+                    <div>${log.message}</div>
+                </div>
+            `;
+        });
+    } else {
+        html = '<div class="text-muted">暂无执行日志</div>';
+    }
+    
+    logsContainer.innerHTML = html;
+    logsContainer.scrollTop = logsContainer.scrollHeight; // 滚动到底部
+}
+
+// 显示错误样例
+function showErrorSamples() {
+    {% if task.result and task.result.summary and task.result.summary.errors %}
+    const errors = {{ task.result.summary.errors | tojson }};
+    const totalErrors = {{ task.result.summary.total_errors }};
+    
+    let html = `
+        <div class="mb-3">
+            <p>发现 <strong>${totalErrors}</strong> 个错误，以下显示前 ${errors.length} 个样例：</p>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th>类型</th>
+                        <th>列名</th>
+                        <th>行号</th>
+                        <th>原始值</th>
+                        <th>错误信息</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+    
+    errors.forEach(error => {
+        const typeIcon = error.type === 'numeric_conversion' ? 
+            '<i class="bi bi-123 text-primary"></i>' : 
+            '<i class="bi bi-calendar text-success"></i>';
+        
+        html += `
+            <tr>
+                <td>${typeIcon} ${error.type}</td>
+                <td><code>${error.column}</code></td>
+                <td>${error.row + 1}</td>
+                <td><code>${error.original_value}</code></td>
+                <td><small class="text-muted">${error.error}</small></td>
+            </tr>
+        `;
+    });
+    
+    html += '</tbody></table></div>';
+    
+    document.getElementById('errorSamplesContent').innerHTML = html;
+    
+    const modal = new bootstrap.Modal(document.getElementById('errorSamplesModal'));
+    modal.show();
+    {% endif %}
+}
+
+// 页面卸载时清理定时器
+window.addEventListener('beforeunload', function() {
+    if (autoRefreshInterval) {
+        clearInterval(autoRefreshInterval);
+    }
+});
+</script>
+{% endblock %}

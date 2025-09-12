@@ -1,0 +1,943 @@
+{% extends "base.html" %}
+
+{% block title %}配置合并 - Excel/CSV 汇总工具{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{{ url_for('index') }}">首页</a></li>
+                <li class="breadcrumb-item active">配置合并</li>
+            </ol>
+        </nav>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-gear"></i> 文件配置与数据清洗设置
+                </h5>
+            </div>
+            <div class="card-body">
+                <form id="configForm">
+                    <!-- 文件配置 -->
+                    <div class="row">
+                        <div class="col-12">
+                            <h6 class="text-primary"><i class="bi bi-files"></i> 文件配置</h6>
+                            <hr>
+                        </div>
+                    </div>
+                    
+                    {% for file in files %}
+                    <div class="card mb-3 file-config" data-file-id="{{ file.file_id }}">
+                        <div class="card-header">
+                            <div class="form-check">
+                                <input class="form-check-input file-enable" type="checkbox" 
+                                       value="{{ file.file_id }}" id="file_{{ file.file_id }}" checked>
+                                <label class="form-check-label fw-bold" for="file_{{ file.file_id }}">
+                                    <i class="bi bi-file-earmark-{% if file.extension == 'csv' %}text{% else %}spreadsheet{% endif %}"></i>
+                                    {{ file.original_filename }}
+                                    <small class="text-muted">({{ (file.file_size / 1024 / 1024) | round(2) }} MB)</small>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <label class="form-label">工作表</label>
+                                    <select class="form-select sheet-select" name="sheet_{{ file.file_id }}">
+                                        {% for sheet in file.sheets %}
+                                        <option value="{{ sheet }}">{{ sheet }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label">表头行</label>
+                                    <input type="number" class="form-control header-row" 
+                                           name="header_{{ file.file_id }}" value="1" min="1">
+                                    <small class="form-text text-muted">从第几行开始是表头</small>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">数据源名称</label>
+                                    <input type="text" class="form-control source-name" 
+                                           name="source_{{ file.file_id }}" 
+                                           value="{{ file.original_filename.rsplit('.', 1)[0] }}">
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">操作</label>
+                                    <div>
+                                        <button type="button" class="btn btn-outline-primary btn-sm" 
+                                                onclick="previewFileConfig('{{ file.file_id }}')">
+                                            <i class="bi bi-eye"></i> 预览
+                                        </button>
+                                        <button type="button" class="btn btn-outline-info btn-sm" 
+                                                onclick="detectColumns('{{ file.file_id }}')">
+                                            <i class="bi bi-search"></i> 检测列类型
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                    
+                    <!-- 数据清洗配置 -->
+                    <div class="row mt-4">
+                        <div class="col-12">
+                            <h6 class="text-primary"><i class="bi bi-funnel"></i> 数据清洗选项</h6>
+                            <hr>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6 class="card-title mb-0">基础清洗</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" id="removeEmptyRows">
+                                        <label class="form-check-label" for="removeEmptyRows">
+                                            去除空行
+                                        </label>
+                                    </div>
+                                    
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" id="cleanNumeric">
+                                        <label class="form-check-label" for="cleanNumeric">
+                                            数值清洗 (去千分位、货币符号)
+                                        </label>
+                                    </div>
+                                    
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" id="parseDates">
+                                        <label class="form-check-label" for="parseDates">
+                                            日期解析统一格式
+                                        </label>
+                                    </div>
+                                    
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="removeDuplicates">
+                                        <label class="form-check-label" for="removeDuplicates">
+                                            去除重复行
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6 class="card-title mb-0">高级选项</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="mb-3">
+                                        <label class="form-label">合并策略</label>
+                                        <select class="form-select" id="mergeStrategy">
+                                            <option value="outer">外连接 (保留所有列)</option>
+                                            <option value="inner">内连接 (只保留共同列)</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label class="form-label">去重策略</label>
+                                        <select class="form-select" id="keepStrategy">
+                                            <option value="first">保留第一条</option>
+                                            <option value="last">保留最后一条</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label class="form-label">关键列 (用于判断空行)</label>
+                                        <input type="text" class="form-control" id="keyColumns" 
+                                               placeholder="列名1,列名2... (留空表示检查所有列)">
+                                        <small class="form-text text-muted">用逗号分隔多个列名</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 列类型配置 -->
+                    <div class="row mt-4">
+                        <div class="col-12">
+                            <h6 class="text-primary"><i class="bi bi-gear"></i> 列类型配置</h6>
+                            <hr>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-12">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6 class="card-title mb-0">列配置管理</h6>
+                                    <small class="text-muted">配置列类型、顺序、可见性和重命名</small>
+                                </div>
+                                <div class="card-body">
+                                    <div class="mb-3">
+                                        <button type="button" class="btn btn-success btn-sm" onclick="loadColumnsForConfig()">
+                                            <i class="bi bi-arrow-clockwise"></i> 自动加载列信息
+                                        </button>
+                                        <button type="button" class="btn btn-outline-secondary btn-sm ms-2" onclick="addColumnConfigRow()">
+                                            <i class="bi bi-plus"></i> 手动添加列
+                                        </button>
+                                        <button type="button" class="btn btn-outline-info btn-sm ms-2" onclick="resetColumnOrder()">
+                                            <i class="bi bi-arrow-counterclockwise"></i> 重置顺序
+                                        </button>
+                                    </div>
+                                    
+                                    <div id="columnConfigContainer">
+                                        <div class="table-responsive">
+                                            <table class="table table-sm" id="columnConfigTable">
+                                                <thead>
+                                                    <tr>
+                                                        <th width="40">顺序</th>
+                                                        <th width="40">显示</th>
+                                                        <th>原列名</th>
+                                                        <th>显示名称</th>
+                                                        <th>数据类型</th>
+                                                        <th width="100">操作</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody id="columnConfigBody">
+                                                    <!-- 动态内容 -->
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                        <small class="form-text text-muted">
+                                            <strong>说明：</strong><br>
+                                            • <strong>顺序</strong> - 拖拽数字或使用上下箭头调整列顺序<br>
+                                            • <strong>显示</strong> - 控制该列是否在最终结果中显示<br>
+                                            • <strong>显示名称</strong> - 导出时使用的列名（留空则使用原列名）<br>
+                                            • <strong>数据类型</strong> - auto(自动)、text(文本)、number(数值)、date(日期)、skip(跳过)
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 导出配置 -->
+                    <div class="row mt-4">
+                        <div class="col-12">
+                            <h6 class="text-primary"><i class="bi bi-download"></i> 导出设置</h6>
+                            <hr>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-4">
+                            <label class="form-label">导出格式</label>
+                            <select class="form-select" id="exportFormat">
+                                <option value="xlsx">Excel (.xlsx)</option>
+                                <option value="csv">CSV (.csv)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-8">
+                            <label class="form-label">文件名</label>
+                            <input type="text" class="form-control" id="exportFilename" 
+                                   value="merged_data" placeholder="merged_data">
+                            <small class="form-text text-muted">不需要包含扩展名</small>
+                        </div>
+                    </div>
+                    
+                    <!-- 操作按钮 -->
+                    <div class="row mt-4">
+                        <div class="col-12">
+                            <hr>
+                            <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                                <button type="button" class="btn btn-secondary" onclick="history.back()">
+                                    <i class="bi bi-arrow-left"></i> 返回
+                                </button>
+                                <button type="button" class="btn btn-info" onclick="previewMergedData()">
+                                    <i class="bi bi-eye"></i> 预览合并结果
+                                </button>
+                                <button type="submit" class="btn btn-success">
+                                    <i class="bi bi-play"></i> 开始合并
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 预览模态框 -->
+<div class="modal fade" id="previewModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-eye"></i> 数据预览
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="previewContent">
+                <!-- 预览内容 -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 列类型检测模态框 -->
+<div class="modal fade" id="columnTypesModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-search"></i> 列类型检测结果
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="columnTypesContent">
+                <!-- 列类型内容 -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// 表单提交处理
+document.getElementById('configForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    // 收集配置数据
+    const config = collectConfiguration();
+    
+    if (!config.file_configs || config.file_configs.length === 0) {
+        alert('请至少选择一个文件');
+        return;
+    }
+    
+    // 提交任务
+    submitMergeTask(config);
+});
+
+// 收集配置数据
+function collectConfiguration() {
+    const fileConfigs = [];
+    const cleaningOptions = {};
+    const exportOptions = {};
+    
+    // 收集文件配置
+    document.querySelectorAll('.file-config').forEach(fileCard => {
+        const checkbox = fileCard.querySelector('.file-enable');
+        if (!checkbox.checked) return;
+        
+        const fileId = fileCard.dataset.fileId;
+        const sheetName = fileCard.querySelector('.sheet-select').value;
+        const headerRow = parseInt(fileCard.querySelector('.header-row').value) - 1; // 转为0-based
+        const sourceName = fileCard.querySelector('.source-name').value;
+        
+        fileConfigs.push({
+            file_id: fileId,
+            sheet_name: sheetName,
+            header_row: headerRow,
+            source_name: sourceName
+        });
+    });
+    
+    // 收集清洗选项
+    cleaningOptions.remove_empty_rows = document.getElementById('removeEmptyRows').checked;
+    cleaningOptions.clean_numeric = document.getElementById('cleanNumeric').checked;
+    cleaningOptions.parse_dates = document.getElementById('parseDates').checked;
+    cleaningOptions.remove_duplicates = document.getElementById('removeDuplicates').checked;
+    cleaningOptions.merge_strategy = document.getElementById('mergeStrategy').value;
+    cleaningOptions.keep_strategy = document.getElementById('keepStrategy').value;
+    
+    const keyColumns = document.getElementById('keyColumns').value.trim();
+    if (keyColumns) {
+        cleaningOptions.key_columns = keyColumns.split(',').map(col => col.trim());
+    }
+    
+    // 收集列类型配置
+    const columnTypes = {};
+    const columnOrder = [];
+    const columnNames = {};
+    const hiddenColumns = new Set();
+    
+    document.querySelectorAll('#columnConfigBody tr').forEach((row, index) => {
+        const originalName = row.querySelector('.original-column-name').value.trim();
+        const displayName = row.querySelector('.display-column-name').value.trim();
+        const columnType = row.querySelector('.column-type').value;
+        const isVisible = row.querySelector('.column-visible').checked;
+        
+        if (originalName) {
+            // 记录列顺序
+            columnOrder.push(originalName);
+            
+            // 记录列类型（如果不是auto）
+            if (columnType !== 'auto') {
+                columnTypes[originalName] = columnType;
+            }
+            
+            // 记录显示名称（如果与原名不同）
+            if (displayName && displayName !== originalName) {
+                columnNames[originalName] = displayName;
+            }
+            
+            // 记录隐藏列
+            if (!isVisible) {
+                hiddenColumns.add(originalName);
+            }
+        }
+    });
+    
+    if (Object.keys(columnTypes).length > 0) {
+        cleaningOptions.column_types = columnTypes;
+    }
+    
+    if (columnOrder.length > 0) {
+        cleaningOptions.column_order = columnOrder;
+    }
+    
+    if (Object.keys(columnNames).length > 0) {
+        cleaningOptions.column_names = columnNames;
+    }
+    
+    if (hiddenColumns.size > 0) {
+        cleaningOptions.hidden_columns = Array.from(hiddenColumns);
+    }
+    
+    // 收集导出选项
+    exportOptions.format = document.getElementById('exportFormat').value;
+    exportOptions.filename = document.getElementById('exportFilename').value || 'merged_data';
+    
+    return {
+        file_configs: fileConfigs,
+        cleaning_options: cleaningOptions,
+        export_options: exportOptions
+    };
+}
+
+// 提交合并任务
+function submitMergeTask(config) {
+    // 显示提交状态
+    const submitBtn = document.querySelector('button[type="submit"]');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> 提交中...';
+    
+    fetch('/submit_task', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(config)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            window.location.href = `/task/${data.task_id}`;
+        } else {
+            alert('提交失败：' + data.error);
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalText;
+        }
+    })
+    .catch(error => {
+        alert('提交失败：' + error.message);
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalText;
+    });
+}
+
+// 预览文件配置
+function previewFileConfig(fileId) {
+    const fileCard = document.querySelector(`[data-file-id="${fileId}"]`);
+    const sheetName = fileCard.querySelector('.sheet-select').value;
+    const headerRow = fileCard.querySelector('.header-row').value;
+    
+    const url = `/api/preview/${fileId}?` + 
+                new URLSearchParams({
+                    sheet_name: sheetName,
+                    header_row: parseInt(headerRow) - 1, // 转为0-based
+                    rows: 20
+                });
+    
+    fetch(url)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                displayPreviewData(data.data, '文件预览');
+                const modal = new bootstrap.Modal(document.getElementById('previewModal'));
+                modal.show();
+            } else {
+                alert('预览失败：' + data.error);
+            }
+        })
+        .catch(error => {
+            alert('预览失败：' + error.message);
+        });
+}
+
+// 检测列类型
+function detectColumns(fileId) {
+    const fileCard = document.querySelector(`[data-file-id="${fileId}"]`);
+    const sheetName = fileCard.querySelector('.sheet-select').value;
+    const headerRow = fileCard.querySelector('.header-row').value;
+    
+    const url = `/api/detect_columns/${fileId}?` + 
+                new URLSearchParams({
+                    sheet_name: sheetName,
+                    header_row: parseInt(headerRow) - 1
+                });
+    
+    fetch(url)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                displayColumnTypes(data.column_types, data.columns);
+                const modal = new bootstrap.Modal(document.getElementById('columnTypesModal'));
+                modal.show();
+            } else {
+                alert('检测失败：' + data.error);
+            }
+        })
+        .catch(error => {
+            alert('检测失败：' + error.message);
+        });
+}
+
+// 显示预览数据
+function displayPreviewData(data, title = '数据预览') {
+    document.querySelector('#previewModal .modal-title').innerHTML = 
+        `<i class="bi bi-eye"></i> ${title}`;
+    
+    if (!data || !data.data || data.data.length === 0) {
+        document.getElementById('previewContent').innerHTML = 
+            '<div class="alert alert-warning">没有数据可预览</div>';
+        return;
+    }
+    
+    const columns = data.columns;
+    const rows = data.data;
+    
+    let html = `
+        <div class="mb-2">
+            <small class="text-muted">
+                共 ${data.total_rows} 行，${data.total_columns} 列
+            </small>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered">
+                <thead class="table-light">
+                    <tr>
+    `;
+    
+    columns.forEach(col => {
+        html += `<th>${col}</th>`;
+    });
+    html += '</tr></thead><tbody>';
+    
+    rows.slice(0, 50).forEach(row => {  // 最多显示50行
+        html += '<tr>';
+        columns.forEach(col => {
+            const value = row[col] || '';
+            html += `<td>${value}</td>`;
+        });
+        html += '</tr>';
+    });
+    
+    html += '</tbody></table></div>';
+    
+    if (rows.length > 50) {
+        html += '<div class="alert alert-info">只显示前50行数据</div>';
+    }
+    
+    document.getElementById('previewContent').innerHTML = html;
+}
+
+// 显示列类型
+function displayColumnTypes(columnTypes, columns) {
+    let html = `
+        <div class="table-responsive">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>列名</th>
+                        <th>检测类型</th>
+                        <th>建议操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+    
+    columns.forEach(col => {
+        const type = columnTypes[col] || 'unknown';
+        let typeIcon = '';
+        let suggestion = '';
+        
+        switch(type) {
+            case 'numeric':
+                typeIcon = '<i class="bi bi-123 text-primary"></i> 数值';
+                suggestion = '建议开启数值清洗';
+                break;
+            case 'date':
+                typeIcon = '<i class="bi bi-calendar text-success"></i> 日期';
+                suggestion = '建议开启日期解析';
+                break;
+            case 'text':
+                typeIcon = '<i class="bi bi-fonts text-info"></i> 文本';
+                suggestion = '无需特殊处理';
+                break;
+            default:
+                typeIcon = '<i class="bi bi-question text-muted"></i> 未知';
+                suggestion = '请手动确认';
+        }
+        
+        html += `
+            <tr>
+                <td><code>${col}</code></td>
+                <td>${typeIcon}</td>
+                <td><small class="text-muted">${suggestion}</small></td>
+            </tr>
+        `;
+    });
+    
+    html += '</tbody></table></div>';
+    
+    document.getElementById('columnTypesContent').innerHTML = html;
+}
+
+// 预览合并结果
+function previewMergedData() {
+    // 收集配置数据
+    const config = collectConfiguration();
+    
+    if (!config.file_configs || config.file_configs.length === 0) {
+        alert('请至少选择一个文件进行预览');
+        return;
+    }
+    
+    // 显示加载状态
+    const previewBtn = document.querySelector('button[onclick="previewMergedData()"]');
+    const originalText = previewBtn.innerHTML;
+    previewBtn.disabled = true;
+    previewBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> 预览中...';
+    
+    fetch('/preview_merge', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            file_configs: config.file_configs,
+            cleaning_options: config.cleaning_options
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showPreviewModal(data.preview_data, data.stats);
+        } else {
+            alert('预览失败: ' + (data.error || '未知错误'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('预览失败: ' + error.message);
+    })
+    .finally(() => {
+        previewBtn.disabled = false;
+        previewBtn.innerHTML = originalText;
+    });
+}
+
+// 显示预览模态框
+function showPreviewModal(previewData, stats) {
+    const modal = new bootstrap.Modal(document.getElementById('previewModal'));
+    
+    // 构建配置应用信息
+    const appliedConfigs = stats.applied_configurations;
+    let configInfo = '';
+    if (appliedConfigs.column_order || appliedConfigs.column_names || appliedConfigs.hidden_columns) {
+        configInfo += '<br>• 列配置: ';
+        const configParts = [];
+        if (appliedConfigs.column_order) configParts.push('自定义顺序');
+        if (appliedConfigs.column_names) configParts.push('重命名');
+        if (appliedConfigs.hidden_columns) configParts.push('隐藏列');
+        configInfo += configParts.join(', ');
+    }
+    
+    let cleaningInfo = '';
+    if (appliedConfigs.clean_numeric || appliedConfigs.parse_dates || appliedConfigs.remove_duplicates) {
+        cleaningInfo += '<br>• 数据清洗: ';
+        const cleaningParts = [];
+        if (appliedConfigs.clean_numeric) cleaningParts.push('数值清洗');
+        if (appliedConfigs.parse_dates) cleaningParts.push('日期解析');
+        if (appliedConfigs.remove_duplicates) cleaningParts.push('去重');
+        cleaningInfo += cleaningParts.join(', ');
+    }
+    
+    let html = `
+        <div class="alert alert-info">
+            <strong>预览信息：</strong><br>
+            • 合并策略: ${previewData.strategy === 'outer' ? '外连接 (保留所有列)' : '内连接 (只保留共同列)'}<br>
+            • 输入文件: ${stats.input_files} 个<br>
+            • 预计总行数: ${stats.estimated_total_rows} 行<br>
+            • 最终列数: ${stats.total_columns} 列${configInfo}${cleaningInfo}<br>
+            • 显示前 ${previewData.preview_rows} 行数据
+        </div>
+        
+        <div class="table-responsive">
+            <table class="table table-sm table-striped">
+                <thead class="table-dark">
+                    <tr>
+    `;
+    
+    // 添加表头
+    previewData.columns.forEach(col => {
+        html += `<th>${col}</th>`;
+    });
+    html += '</tr></thead><tbody>';
+    
+    // 添加数据行
+    previewData.data.forEach(row => {
+        html += '<tr>';
+        row.forEach(cell => {
+            const cellValue = cell !== null && cell !== undefined ? String(cell) : '';
+            html += `<td>${cellValue}</td>`;
+        });
+        html += '</tr>';
+    });
+    
+    html += '</tbody></table></div>';
+    
+    if (previewData.total_rows > previewData.preview_rows) {
+        html += `
+            <div class="alert alert-warning mt-3">
+                <i class="bi bi-info-circle"></i> 
+                只显示前 ${previewData.preview_rows} 行，完整数据共 ${previewData.total_rows} 行
+            </div>
+        `;
+    }
+    
+    // 如果应用了配置，显示提示
+    if (configInfo || cleaningInfo) {
+        html += `
+            <div class="alert alert-success mt-3">
+                <i class="bi bi-check-circle"></i> 
+                <strong>已应用用户配置</strong> - 预览结果反映了您的列配置和数据清洗设置
+            </div>
+        `;
+    }
+    
+    document.getElementById('previewContent').innerHTML = html;
+    modal.show();
+}
+
+// 文件启用/禁用处理
+document.addEventListener('change', function(e) {
+    if (e.target.classList.contains('file-enable')) {
+        const fileCard = e.target.closest('.file-config');
+        const inputs = fileCard.querySelectorAll('select, input:not(.file-enable)');
+        
+        inputs.forEach(input => {
+            input.disabled = !e.target.checked;
+        });
+        
+        if (e.target.checked) {
+            fileCard.classList.remove('opacity-50');
+        } else {
+            fileCard.classList.add('opacity-50');
+        }
+    }
+});
+
+// 加载列信息用于配置
+function loadColumnsForConfig() {
+    const fileConfigs = [];
+    
+    // 收集已启用的文件配置
+    document.querySelectorAll('.file-config').forEach(fileCard => {
+        const checkbox = fileCard.querySelector('.file-enable');
+        if (!checkbox.checked) return;
+        
+        const fileId = fileCard.dataset.fileId;
+        const sheetName = fileCard.querySelector('.sheet-select').value;
+        const headerRow = parseInt(fileCard.querySelector('.header-row').value) - 1;
+        
+        fileConfigs.push({
+            file_id: fileId,
+            sheet_name: sheetName,
+            header_row: headerRow
+        });
+    });
+    
+    if (fileConfigs.length === 0) {
+        alert('请先选择要合并的文件');
+        return;
+    }
+    
+    // 显示加载状态
+    const loadBtn = document.querySelector('button[onclick="loadColumnsForConfig()"]');
+    const originalText = loadBtn.innerHTML;
+    loadBtn.disabled = true;
+    loadBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> 加载中...';
+    
+    fetch('/get_merged_columns', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({file_configs: fileConfigs})
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            populateColumnConfigTable(data.columns);
+        } else {
+            alert('加载列信息失败: ' + (data.error || '未知错误'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('加载列信息失败: ' + error.message);
+    })
+    .finally(() => {
+        loadBtn.disabled = false;
+        loadBtn.innerHTML = originalText;
+    });
+}
+
+// 填充列配置表格
+function populateColumnConfigTable(columns) {
+    const tbody = document.getElementById('columnConfigBody');
+    tbody.innerHTML = '';
+    
+    columns.forEach((column, index) => {
+        addColumnConfigRow(column.name, column.name, column.suggested_type || 'auto', true, index + 1);
+    });
+    
+    // 启用拖拽排序
+    enableColumnSorting();
+}
+
+// 添加列配置行
+function addColumnConfigRow(originalName = '', displayName = '', columnType = 'auto', isVisible = true, order = null) {
+    const tbody = document.getElementById('columnConfigBody');
+    const row = document.createElement('tr');
+    
+    if (order === null) {
+        order = tbody.children.length + 1;
+    }
+    
+    row.innerHTML = `
+        <td>
+            <div class="d-flex align-items-center">
+                <input type="number" class="form-control form-control-sm column-order" 
+                       value="${order}" min="1" style="width: 60px;" onchange="updateColumnOrder()">
+                <div class="btn-group-vertical ms-1" style="height: 32px;">
+                    <button type="button" class="btn btn-outline-secondary btn-sm py-0" style="height: 16px; font-size: 10px;" onclick="moveColumnUp(this)" title="上移">
+                        <i class="bi bi-chevron-up"></i>
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm py-0" style="height: 16px; font-size: 10px;" onclick="moveColumnDown(this)" title="下移">
+                        <i class="bi bi-chevron-down"></i>
+                    </button>
+                </div>
+            </div>
+        </td>
+        <td>
+            <input type="checkbox" class="form-check-input column-visible" ${isVisible ? 'checked' : ''}>
+        </td>
+        <td>
+            <input type="text" class="form-control form-control-sm original-column-name" 
+                   value="${originalName}" placeholder="原列名" readonly>
+        </td>
+        <td>
+            <input type="text" class="form-control form-control-sm display-column-name" 
+                   value="${displayName}" placeholder="显示名称">
+        </td>
+        <td>
+            <select class="form-select form-select-sm column-type">
+                <option value="auto" ${columnType === 'auto' ? 'selected' : ''}>自动检测</option>
+                <option value="text" ${columnType === 'text' ? 'selected' : ''}>文本</option>
+                <option value="number" ${columnType === 'number' ? 'selected' : ''}>数值</option>
+                <option value="date" ${columnType === 'date' ? 'selected' : ''}>日期</option>
+                <option value="skip" ${columnType === 'skip' ? 'selected' : ''}>跳过</option>
+            </select>
+        </td>
+        <td>
+            <button type="button" class="btn btn-outline-danger btn-sm" onclick="removeColumnConfigRow(this)">
+                <i class="bi bi-trash"></i>
+            </button>
+        </td>
+    `;
+    
+    tbody.appendChild(row);
+}
+
+// 删除列配置行
+function removeColumnConfigRow(button) {
+    button.closest('tr').remove();
+    updateColumnOrder();
+}
+
+// 上移列
+function moveColumnUp(button) {
+    const row = button.closest('tr');
+    const prevRow = row.previousElementSibling;
+    if (prevRow) {
+        row.parentNode.insertBefore(row, prevRow);
+        updateColumnOrder();
+    }
+}
+
+// 下移列
+function moveColumnDown(button) {
+    const row = button.closest('tr');
+    const nextRow = row.nextElementSibling;
+    if (nextRow) {
+        row.parentNode.insertBefore(nextRow, row);
+        updateColumnOrder();
+    }
+}
+
+// 更新列顺序号码
+function updateColumnOrder() {
+    document.querySelectorAll('#columnConfigBody tr').forEach((row, index) => {
+        row.querySelector('.column-order').value = index + 1;
+    });
+}
+
+// 重置列顺序
+function resetColumnOrder() {
+    const tbody = document.getElementById('columnConfigBody');
+    const rows = Array.from(tbody.children);
+    
+    // 按原列名字母顺序排序
+    rows.sort((a, b) => {
+        const nameA = a.querySelector('.original-column-name').value;
+        const nameB = b.querySelector('.original-column-name').value;
+        return nameA.localeCompare(nameB);
+    });
+    
+    // 重新插入排序后的行
+    rows.forEach(row => tbody.appendChild(row));
+    updateColumnOrder();
+}
+
+// 启用列拖拽排序
+function enableColumnSorting() {
+    // 这里可以集成拖拽库，暂时使用按钮排序
+}
+</script>
+{% endblock %}

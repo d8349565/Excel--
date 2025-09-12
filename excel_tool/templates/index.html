@@ -1,0 +1,482 @@
+{% extends "base.html" %}
+
+{% block title %}首页 - Excel/CSV 汇总工具{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-cloud-upload"></i> 文件上传
+                </h5>
+            </div>
+            <div class="card-body">
+                <form action="{{ url_for('upload_files') }}" method="post" enctype="multipart/form-data" id="uploadForm">
+                    <div class="mb-3">
+                        <label for="files" class="form-label">选择文件</label>
+                        <input type="file" class="form-control" id="files" name="files" multiple 
+                               accept=".xlsx,.xls,.csv" required>
+                        <div class="form-text">
+                            支持格式：.xlsx, .xls, .csv | 单文件最大 10MB | 总大小限制 100MB
+                        </div>
+                    </div>
+                    
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                        <button type="submit" class="btn btn-primary" id="uploadBtn">
+                            <i class="bi bi-upload"></i> 上传文件
+                        </button>
+                    </div>
+                </form>
+                
+                <!-- 上传进度 -->
+                <div class="progress mt-3" id="uploadProgress" style="display: none;">
+                    <div class="progress-bar" role="progressbar" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 已上传文件列表 -->
+{% if files %}
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-files"></i> 已上传文件 ({{ files|length }})
+                </h5>
+                <div>
+                    <button class="btn btn-danger btn-sm me-2" onclick="clearAllFiles()" 
+                            title="清理所有文件" id="clearAllBtn">
+                        <i class="bi bi-trash3"></i> 清理所有
+                    </button>
+                    <button class="btn btn-success btn-sm" onclick="selectAllFiles()">
+                        <i class="bi bi-check2-all"></i> 全选并合并
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>
+                                    <input type="checkbox" id="selectAll" onchange="toggleSelectAll()">
+                                </th>
+                                <th>文件名</th>
+                                <th>大小</th>
+                                <th>工作表</th>
+                                <th>上传时间</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for file in files %}
+                            <tr>
+                                <td>
+                                    <input type="checkbox" class="file-checkbox" value="{{ file.file_id }}">
+                                </td>
+                                <td>
+                                    <i class="bi bi-file-earmark-{% if file.extension == 'csv' %}text{% else %}spreadsheet{% endif %}"></i>
+                                    {{ file.original_filename }}
+                                </td>
+                                <td>{{ (file.file_size / 1024 / 1024) | round(2) }} MB</td>
+                                <td>
+                                    {% if file.sheets %}
+                                        <span class="badge bg-info">{{ file.sheets|length }} 个</span>
+                                        <small class="text-muted">({{ file.sheets|join(', ') }})</small>
+                                    {% else %}
+                                        <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <small class="text-muted">{{ file.upload_time[:19].replace('T', ' ') }}</small>
+                                </td>
+                                <td>
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-outline-primary" 
+                                                onclick="previewFile('{{ file.file_id }}', '{{ file.original_filename }}')">
+                                            <i class="bi bi-eye"></i> 预览
+                                        </button>
+                                        <button class="btn btn-outline-danger" 
+                                                onclick="deleteFile('{{ file.file_id }}', '{{ file.original_filename }}')">
+                                            <i class="bi bi-trash"></i> 删除
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-3">
+                    <button class="btn btn-success" onclick="configureSelectedFiles()" id="configureBtn">
+                        <i class="bi bi-gear"></i> 配置选中文件
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card border-light">
+            <div class="card-body text-center text-muted">
+                <i class="bi bi-file-earmark-plus" style="font-size: 3rem;"></i>
+                <h5 class="mt-3">暂无上传文件</h5>
+                <p>请先上传 Excel 或 CSV 文件开始数据合并</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- 文件预览模态框 -->
+<div class="modal fade" id="previewModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-eye"></i> 文件预览
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label">工作表</label>
+                        <select class="form-select" id="previewSheet" onchange="updatePreview()">
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">表头行</label>
+                        <input type="number" class="form-control" id="previewHeaderRow" 
+                               value="0" min="0" onchange="updatePreview()">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">预览行数</label>
+                        <input type="number" class="form-control" id="previewRows" 
+                               value="20" min="5" max="100" onchange="updatePreview()">
+                    </div>
+                </div>
+                
+                <div id="previewContent">
+                    <div class="text-center">
+                        <div class="spinner-border" role="status">
+                            <span class="visually-hidden">加载中...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let selectedFiles = [];
+let currentPreviewFileId = null;
+
+// 表单提交处理
+document.getElementById('uploadForm').addEventListener('submit', function(e) {
+    const fileInput = document.getElementById('files');
+    const files = fileInput.files;
+    
+    // 检查文件大小
+    let totalSize = 0;
+    for (let file of files) {
+        totalSize += file.size;
+        if (file.size > 100 * 1024 * 1024) {
+            e.preventDefault();
+            alert(`文件 ${file.name} 超过 100MB 限制`);
+            return;
+        }
+    }
+    
+    if (totalSize > 500 * 1024 * 1024) {
+        e.preventDefault();
+        alert('总文件大小超过 500MB 限制');
+        return;
+    }
+    
+    // 显示上传进度
+    const progress = document.getElementById('uploadProgress');
+    const btn = document.getElementById('uploadBtn');
+    
+    progress.style.display = 'block';
+    btn.disabled = true;
+    btn.innerHTML = '<i class="bi bi-hourglass-split"></i> 上传中...';
+});
+
+// 切换全选
+function toggleSelectAll() {
+    const selectAll = document.getElementById('selectAll');
+    const checkboxes = document.querySelectorAll('.file-checkbox');
+    
+    if (!selectAll || checkboxes.length === 0) return;
+    
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = selectAll.checked;
+    });
+    
+    updateSelectedFiles();
+}
+
+// 更新选中文件
+function updateSelectedFiles() {
+    const checkboxes = document.querySelectorAll('.file-checkbox:checked');
+    selectedFiles = Array.from(checkboxes).map(cb => cb.value);
+    
+    const configureBtn = document.getElementById('configureBtn');
+    if (!configureBtn) return; // 如果按钮不存在，直接返回
+    
+    if (selectedFiles.length > 0) {
+        configureBtn.disabled = false;
+        configureBtn.innerHTML = `<i class="bi bi-gear"></i> 配置选中文件 (${selectedFiles.length})`;
+    } else {
+        configureBtn.disabled = true;
+        configureBtn.innerHTML = '<i class="bi bi-gear"></i> 配置选中文件';
+    }
+}
+
+// 监听复选框变化
+document.addEventListener('change', function(e) {
+    if (e.target.classList.contains('file-checkbox')) {
+        updateSelectedFiles();
+    }
+});
+
+// 全选并合并
+function selectAllFiles() {
+    document.getElementById('selectAll').checked = true;
+    toggleSelectAll();
+    if (selectedFiles.length > 0) {
+        configureSelectedFiles();
+    }
+}
+
+// 配置选中文件
+function configureSelectedFiles() {
+    if (selectedFiles.length === 0) {
+        alert('请先选择要处理的文件');
+        return;
+    }
+    
+    window.location.href = `/configure?file_ids=${selectedFiles.join(',')}`;
+}
+
+// 预览文件
+function previewFile(fileId, filename) {
+    currentPreviewFileId = fileId;
+    
+    const modal = new bootstrap.Modal(document.getElementById('previewModal'));
+    document.querySelector('#previewModal .modal-title').innerHTML = 
+        `<i class="bi bi-eye"></i> 文件预览 - ${filename}`;
+    
+    // 获取文件信息并填充工作表选项
+    fetch(`/api/preview/${fileId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                updatePreviewSheetOptions(fileId);
+                modal.show();
+            } else {
+                alert('预览失败：' + data.error);
+            }
+        })
+        .catch(error => {
+            alert('预览失败：' + error.message);
+        });
+}
+
+// 更新工作表选项
+function updatePreviewSheetOptions(fileId) {
+    // 这里需要获取文件的工作表信息
+    const fileRow = document.querySelector(`input[value="${fileId}"]`);
+    if (!fileRow) return;
+    
+    const rowElement = fileRow.closest('tr');
+    if (!rowElement) return;
+    
+    const sheetsCell = rowElement.cells[3];
+    if (!sheetsCell) return;
+    
+    const sheetsText = sheetsCell.textContent;
+    
+    const sheetSelect = document.getElementById('previewSheet');
+    if (!sheetSelect) return;
+    
+    sheetSelect.innerHTML = '';
+    
+    // 从页面获取工作表信息（简化处理）
+    if (sheetsText.includes('CSV')) {
+        sheetSelect.innerHTML = '<option value="">CSV</option>';
+    } else {
+        // Excel文件，添加默认选项
+        sheetSelect.innerHTML = '<option value="">Sheet1</option>';
+    }
+    
+    updatePreview();
+}
+
+// 更新预览
+function updatePreview() {
+    if (!currentPreviewFileId) return;
+    
+    const sheetName = document.getElementById('previewSheet').value;
+    const headerRow = document.getElementById('previewHeaderRow').value;
+    const rows = document.getElementById('previewRows').value;
+    
+    const url = `/api/preview/${currentPreviewFileId}?` + 
+                new URLSearchParams({
+                    sheet_name: sheetName,
+                    header_row: headerRow,
+                    rows: rows
+                });
+    
+    document.getElementById('previewContent').innerHTML = `
+        <div class="text-center">
+            <div class="spinner-border" role="status">
+                <span class="visually-hidden">加载中...</span>
+            </div>
+        </div>
+    `;
+    
+    fetch(url)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                displayPreviewData(data.data);
+            } else {
+                document.getElementById('previewContent').innerHTML = 
+                    `<div class="alert alert-danger">预览失败：${data.error}</div>`;
+            }
+        })
+        .catch(error => {
+            document.getElementById('previewContent').innerHTML = 
+                `<div class="alert alert-danger">预览失败：${error.message}</div>`;
+        });
+}
+
+// 显示预览数据
+function displayPreviewData(data) {
+    if (!data || !data.data || data.data.length === 0) {
+        document.getElementById('previewContent').innerHTML = 
+            '<div class="alert alert-warning">没有数据可预览</div>';
+        return;
+    }
+    
+    const columns = data.columns;
+    const rows = data.data;
+    
+    let html = `
+        <div class="mb-2">
+            <small class="text-muted">
+                共 ${data.total_rows} 行，${data.total_columns} 列
+            </small>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered">
+                <thead class="table-light">
+                    <tr>
+    `;
+    
+    columns.forEach(col => {
+        html += `<th>${col}</th>`;
+    });
+    html += '</tr></thead><tbody>';
+    
+    rows.forEach(row => {
+        html += '<tr>';
+        columns.forEach(col => {
+            const value = row[col] || '';
+            html += `<td>${value}</td>`;
+        });
+        html += '</tr>';
+    });
+    
+    html += '</tbody></table></div>';
+    
+    document.getElementById('previewContent').innerHTML = html;
+}
+
+// 删除文件
+function deleteFile(fileId, filename) {
+    if (!confirm(`确定要删除文件 "${filename}" 吗？`)) {
+        return;
+    }
+    
+    fetch(`/api/delete_file/${fileId}`, { method: 'DELETE' })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('删除失败：' + data.error);
+            }
+        })
+        .catch(error => {
+            alert('删除失败：' + error.message);
+        });
+}
+
+// 清理所有文件
+function clearAllFiles() {
+    const fileCount = {{ files|length if files else 0 }};
+    
+    if (fileCount === 0) {
+        alert('没有文件需要清理');
+        return;
+    }
+    
+    if (!confirm(`确定要清理所有 ${fileCount} 个文件吗？\n\n此操作不可恢复！`)) {
+        return;
+    }
+    
+    const clearBtn = document.getElementById('clearAllBtn');
+    const originalText = clearBtn.innerHTML;
+    clearBtn.disabled = true;
+    clearBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> 清理中...';
+    
+    fetch('/api/clear_all_files', { 
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message);
+            location.reload();
+        } else {
+            alert('清理失败：' + data.error);
+        }
+    })
+    .catch(error => {
+        alert('清理失败：' + error.message);
+    })
+    .finally(() => {
+        clearBtn.disabled = false;
+        clearBtn.innerHTML = originalText;
+    });
+}
+
+// 初始化
+document.addEventListener('DOMContentLoaded', function() {
+    // 只有在元素存在时才调用
+    if (document.getElementById('configureBtn')) {
+        updateSelectedFiles();
+    }
+});
+</script>
+{% endblock %}
