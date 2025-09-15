@@ -17,10 +17,21 @@
 <div class="row">
     <div class="col-12">
         <div class="card">
-            <div class="card-header">
+            <div class="card-header d-flex justify-content-between align-items-center">
                 <h5 class="card-title mb-0">
                     <i class="bi bi-gear"></i> 文件配置与数据清洗设置
                 </h5>
+                <div class="btn-group" role="group">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="showUnifiedConfig()">
+                        <i class="bi bi-layers"></i> 统一配置
+                    </button>
+                    <button type="button" class="btn btn-outline-info btn-sm" onclick="exportConfig()">
+                        <i class="bi bi-download"></i> 导出配置
+                    </button>
+                    <button type="button" class="btn btn-outline-success btn-sm" onclick="importConfig()">
+                        <i class="bi bi-upload"></i> 导入配置
+                    </button>
+                </div>
             </div>
             <div class="card-body">
                 <form id="configForm">
@@ -265,6 +276,203 @@
                         </div>
                     </div>
                 </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 统一配置模态框 -->
+<div class="modal fade" id="unifiedConfigModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-layers"></i> 统一配置
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle"></i> 
+                    将当前配置统一应用到所有已选文件。此操作会覆盖各文件的单独配置。
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-4">
+                        <label class="form-label">统一表头行</label>
+                        <input type="number" class="form-control" id="unifiedHeaderRow" value="1" min="1">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">统一工作表</label>
+                        <select class="form-select" id="unifiedSheetRule">
+                            <option value="keep">保持现有选择</option>
+                            <option value="first">选择第一个工作表</option>
+                            <option value="specific">指定工作表名称</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">数据源名称规则</label>
+                        <select class="form-select" id="unifiedNamingRule">
+                            <option value="filename">使用文件名</option>
+                            <option value="custom">自定义前缀</option>
+                            <option value="keep">保持现有配置</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="row mt-3" id="specificSheetRow" style="display: none;">
+                    <div class="col-12">
+                        <label class="form-label">指定工作表名称</label>
+                        <input type="text" class="form-control" id="specificSheetName" placeholder="例如：Sheet1">
+                        <small class="form-text text-muted">将尝试在每个文件中查找此工作表，不存在则使用第一个</small>
+                    </div>
+                </div>
+                
+                <div class="row mt-3" id="customPrefixRow" style="display: none;">
+                    <div class="col-12">
+                        <label class="form-label">自定义前缀</label>
+                        <input type="text" class="form-control" id="customPrefix" placeholder="数据源_">
+                        <small class="form-text text-muted">将在文件名前添加此前缀</small>
+                    </div>
+                </div>
+
+                <div class="row mt-3">
+                    <div class="col-12">
+                        <label class="form-label">应用到哪些文件</label>
+                        <div id="fileSelectionForUnified">
+                            <!-- 动态生成文件选择 -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="applyUnifiedConfig()">应用配置</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 配置导入导出模态框 -->
+<div class="modal fade" id="configImportExportModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="configModalTitle">
+                    <i class="bi bi-upload"></i> 配置管理
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <!-- 缓存配置管理 -->
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <div class="card border-success">
+                            <div class="card-header bg-success text-white">
+                                <h6 class="card-title mb-0">
+                                    <i class="bi bi-clock-history"></i> 历史配置
+                                </h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-8">
+                                        <label class="form-label">选择历史配置</label>
+                                        <select class="form-select" id="cachedConfigSelect">
+                                            <option value="">选择要应用的历史配置...</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">&nbsp;</label>
+                                        <div class="d-grid gap-2">
+                                            <button type="button" class="btn btn-success btn-sm" onclick="applyCachedConfig()">
+                                                <i class="bi bi-arrow-clockwise"></i> 应用配置
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row mt-2">
+                                    <div class="col-md-6">
+                                        <label class="form-label">保存当前配置</label>
+                                        <input type="text" class="form-control" id="configCacheName" placeholder="输入配置名称...">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label">&nbsp;</label>
+                                        <button type="button" class="btn btn-primary btn-sm w-100" onclick="saveCurrentConfigToCache()">
+                                            <i class="bi bi-save"></i> 保存配置
+                                        </button>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label">&nbsp;</label>
+                                        <button type="button" class="btn btn-outline-danger btn-sm w-100" onclick="clearCachedConfigs()">
+                                            <i class="bi bi-trash"></i> 清空缓存
+                                        </button>
+                                    </div>
+                                </div>
+                                <small class="text-muted">
+                                    <i class="bi bi-info-circle"></i> 
+                                    配置会自动保存到浏览器本地存储中，下次访问时可以快速重用。
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <h6 class="card-title mb-0">
+                                    <i class="bi bi-download"></i> 导出配置
+                                </h6>
+                            </div>
+                            <div class="card-body">
+                                <p class="small text-muted">将当前所有配置导出为JSON文件，可用于备份或复用。</p>
+                                <button type="button" class="btn btn-info w-100" onclick="doExportConfig()">
+                                    <i class="bi bi-download"></i> 导出配置文件
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <h6 class="card-title mb-0">
+                                    <i class="bi bi-upload"></i> 导入配置
+                                </h6>
+                            </div>
+                            <div class="card-body">
+                                <p class="small text-muted">从之前导出的JSON配置文件中加载配置。</p>
+                                <input type="file" class="form-control mb-2" id="configFileInput" accept=".json">
+                                <button type="button" class="btn btn-success w-100" onclick="doImportConfig()">
+                                    <i class="bi bi-upload"></i> 导入配置文件
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row mt-3">
+                    <div class="col-12">
+                        <div class="card">
+                            <div class="card-header">
+                                <h6 class="card-title mb-0">
+                                    <i class="bi bi-list"></i> 配置预览
+                                </h6>
+                            </div>
+                            <div class="card-body">
+                                <pre id="configPreview" class="bg-light p-2" style="max-height: 200px; overflow-y: auto;">
+点击"预览当前配置"查看当前配置内容
+                                </pre>
+                                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="previewCurrentConfig()">
+                                    预览当前配置
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
             </div>
         </div>
     </div>
@@ -537,21 +745,65 @@ function displayPreviewData(data, title = '数据预览') {
             </small>
         </div>
         <div class="table-responsive">
-            <table class="table table-sm table-bordered">
+            <style>
+                .preview-table {
+                    white-space: nowrap;
+                    table-layout: fixed;
+                    width: 100%;
+                }
+                .preview-table th, .preview-table td {
+                    max-width: 200px;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                    padding: 4px 8px;
+                    border: 1px solid #dee2e6;
+                }
+                .preview-table th {
+                    position: sticky;
+                    top: 0;
+                    background-color: #f8f9fa;
+                    z-index: 10;
+                    font-weight: 600;
+                }
+                .preview-table td:hover {
+                    background-color: #f8f9fa;
+                    cursor: pointer;
+                    position: relative;
+                }
+                .preview-table td:hover::after {
+                    content: attr(title);
+                    position: absolute;
+                    background: #333;
+                    color: white;
+                    padding: 4px 8px;
+                    border-radius: 4px;
+                    white-space: normal;
+                    z-index: 1000;
+                    top: -5px;
+                    left: 0;
+                    max-width: 300px;
+                    word-wrap: break-word;
+                    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+                }
+            </style>
+            <table class="table table-sm table-bordered preview-table">
                 <thead class="table-light">
                     <tr>
     `;
     
-    columns.forEach(col => {
-        html += `<th>${col}</th>`;
+    columns.forEach((col, index) => {
+        const width = Math.max(120, Math.min(200, col.length * 10 + 50));
+        html += `<th style="width: ${width}px;" title="${col}">${col}</th>`;
     });
     html += '</tr></thead><tbody>';
     
     rows.slice(0, 50).forEach(row => {  // 最多显示50行
         html += '<tr>';
         columns.forEach(col => {
-            const value = row[col] || '';
-            html += `<td>${value}</td>`;
+            const value = String(row[col] || '');
+            const displayValue = value.length > 25 ? value.substring(0, 25) + '...' : value;
+            html += `<td title="${value.replace(/"/g, '&quot;')}">${displayValue}</td>`;
         });
         html += '</tr>';
     });
@@ -698,23 +950,68 @@ function showPreviewModal(previewData, stats) {
         </div>
         
         <div class="table-responsive">
-            <table class="table table-sm table-striped">
+            <style>
+                .merge-preview-table {
+                    white-space: nowrap;
+                    table-layout: fixed;
+                    width: 100%;
+                }
+                .merge-preview-table th, .merge-preview-table td {
+                    max-width: 200px;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                    padding: 4px 8px;
+                    border: 1px solid #dee2e6;
+                }
+                .merge-preview-table th {
+                    position: sticky;
+                    top: 0;
+                    background-color: #343a40;
+                    color: white;
+                    z-index: 10;
+                    font-weight: 600;
+                }
+                .merge-preview-table td:hover {
+                    background-color: #f8f9fa;
+                    cursor: pointer;
+                    position: relative;
+                }
+                .merge-preview-table td:hover::after {
+                    content: attr(title);
+                    position: absolute;
+                    background: #333;
+                    color: white;
+                    padding: 4px 8px;
+                    border-radius: 4px;
+                    white-space: normal;
+                    z-index: 1000;
+                    top: -5px;
+                    left: 0;
+                    max-width: 300px;
+                    word-wrap: break-word;
+                    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+                }
+            </style>
+            <table class="table table-sm table-striped merge-preview-table">
                 <thead class="table-dark">
                     <tr>
     `;
     
     // 添加表头
-    previewData.columns.forEach(col => {
-        html += `<th>${col}</th>`;
+    previewData.columns.forEach((col, index) => {
+        const width = Math.max(120, Math.min(200, col.length * 10 + 50));
+        html += `<th style="width: ${width}px;" title="${col}">${col}</th>`;
     });
     html += '</tr></thead><tbody>';
     
     // 添加数据行
     previewData.data.forEach(row => {
         html += '<tr>';
-        row.forEach(cell => {
+        row.forEach((cell, index) => {
             const cellValue = cell !== null && cell !== undefined ? String(cell) : '';
-            html += `<td>${cellValue}</td>`;
+            const displayValue = cellValue.length > 25 ? cellValue.substring(0, 25) + '...' : cellValue;
+            html += `<td title="${cellValue.replace(/"/g, '&quot;')}">${displayValue}</td>`;
         });
         html += '</tr>';
     });
@@ -939,5 +1236,535 @@ function resetColumnOrder() {
 function enableColumnSorting() {
     // 这里可以集成拖拽库，暂时使用按钮排序
 }
+
+// ================ 统一配置功能 ================
+
+// 显示统一配置模态框
+function showUnifiedConfig() {
+    // 获取所有文件
+    const fileConfigs = document.querySelectorAll('.file-config');
+    const fileSelectionContainer = document.getElementById('fileSelectionForUnified');
+    
+    fileSelectionContainer.innerHTML = '';
+    
+    fileConfigs.forEach(config => {
+        const fileId = config.dataset.fileId;
+        const checkbox = config.querySelector('.file-enable');
+        const label = config.querySelector('label[for="file_' + fileId + '"]');
+        const fileName = label ? label.textContent.trim() : '未知文件';
+        
+        const div = document.createElement('div');
+        div.className = 'form-check';
+        div.innerHTML = `
+            <input class="form-check-input unified-file-checkbox" type="checkbox" value="${fileId}" id="unified_${fileId}" ${checkbox.checked ? 'checked' : ''}>
+            <label class="form-check-label" for="unified_${fileId}">
+                ${fileName}
+            </label>
+        `;
+        fileSelectionContainer.appendChild(div);
+    });
+    
+    // 监听命名规则变化
+    document.getElementById('unifiedNamingRule').addEventListener('change', function() {
+        const customPrefixRow = document.getElementById('customPrefixRow');
+        if (this.value === 'custom') {
+            customPrefixRow.style.display = 'block';
+        } else {
+            customPrefixRow.style.display = 'none';
+        }
+    });
+    
+    // 监听工作表规则变化
+    document.getElementById('unifiedSheetRule').addEventListener('change', function() {
+        const specificSheetRow = document.getElementById('specificSheetRow');
+        if (this.value === 'specific') {
+            specificSheetRow.style.display = 'block';
+        } else {
+            specificSheetRow.style.display = 'none';
+        }
+    });
+    
+    const modal = new bootstrap.Modal(document.getElementById('unifiedConfigModal'));
+    modal.show();
+}
+
+// 应用统一配置
+function applyUnifiedConfig() {
+    const headerRow = document.getElementById('unifiedHeaderRow').value;
+    const sheetRule = document.getElementById('unifiedSheetRule').value;
+    const specificSheetName = document.getElementById('specificSheetName').value;
+    const namingRule = document.getElementById('unifiedNamingRule').value;
+    const customPrefix = document.getElementById('customPrefix').value;
+    
+    const selectedFiles = Array.from(document.querySelectorAll('.unified-file-checkbox:checked'))
+        .map(cb => cb.value);
+    
+    if (selectedFiles.length === 0) {
+        alert('请选择要应用配置的文件');
+        return;
+    }
+    
+    selectedFiles.forEach(fileId => {
+        const fileConfig = document.querySelector(`[data-file-id="${fileId}"]`);
+        if (!fileConfig) return;
+        
+        // 应用表头行
+        const headerInput = fileConfig.querySelector('.header-row');
+        if (headerInput) {
+            headerInput.value = headerRow;
+        }
+        
+        // 应用工作表规则
+        const sheetSelect = fileConfig.querySelector('.sheet-select');
+        if (sheetSelect && sheetRule !== 'keep') {
+            if (sheetRule === 'first') {
+                // 选择第一个选项
+                if (sheetSelect.options.length > 0) {
+                    sheetSelect.selectedIndex = 0;
+                }
+            } else if (sheetRule === 'specific' && specificSheetName) {
+                // 查找指定的工作表名称
+                const targetOption = Array.from(sheetSelect.options)
+                    .find(option => option.value === specificSheetName || option.textContent === specificSheetName);
+                if (targetOption) {
+                    sheetSelect.value = targetOption.value;
+                } else {
+                    // 如果找不到指定工作表，使用第一个
+                    if (sheetSelect.options.length > 0) {
+                        sheetSelect.selectedIndex = 0;
+                    }
+                    console.warn(`文件 ${fileId} 中找不到工作表 "${specificSheetName}"，使用第一个工作表`);
+                }
+            }
+        }
+        
+        // 应用命名规则
+        const sourceNameInput = fileConfig.querySelector('.source-name');
+        if (sourceNameInput && namingRule !== 'keep') {
+            if (namingRule === 'custom' && customPrefix) {
+                const originalName = sourceNameInput.value.replace(/^.*?_/, ''); // 移除可能存在的前缀
+                sourceNameInput.value = customPrefix + originalName;
+            } else if (namingRule === 'filename') {
+                const label = fileConfig.querySelector('label');
+                if (label) {
+                    const fileName = label.textContent.trim().replace(/\s*\(.*?\)\s*$/, ''); // 移除文件大小信息
+                    const baseName = fileName.replace(/\.[^/.]+$/, ""); // 移除扩展名
+                    sourceNameInput.value = baseName;
+                }
+            }
+        }
+    });
+    
+    // 关闭模态框
+    const modal = bootstrap.Modal.getInstance(document.getElementById('unifiedConfigModal'));
+    modal.hide();
+    
+    alert(`已对 ${selectedFiles.length} 个文件应用统一配置`);
+}
+
+// ================ 配置导入导出功能 ================
+
+// 显示配置导入导出模态框
+function exportConfig() {
+    document.getElementById('configModalTitle').innerHTML = '<i class="bi bi-download"></i> 导出配置';
+    const modal = new bootstrap.Modal(document.getElementById('configImportExportModal'));
+    modal.show();
+}
+
+function importConfig() {
+    document.getElementById('configModalTitle').innerHTML = '<i class="bi bi-upload"></i> 导入配置';
+    const modal = new bootstrap.Modal(document.getElementById('configImportExportModal'));
+    modal.show();
+}
+
+// 获取当前所有配置
+function getCurrentConfig() {
+    const config = {
+        timestamp: new Date().toISOString(),
+        version: '1.0',
+        files: [],
+        cleaning: {},
+        columns: [],
+        export: {}
+    };
+    
+    // 文件配置
+    document.querySelectorAll('.file-config').forEach(fileConfig => {
+        const fileId = fileConfig.dataset.fileId;
+        const enabled = fileConfig.querySelector('.file-enable').checked;
+        const sheet = fileConfig.querySelector('.sheet-select').value;
+        const headerRow = fileConfig.querySelector('.header-row').value;
+        const sourceName = fileConfig.querySelector('.source-name').value;
+        
+        config.files.push({
+            fileId,
+            enabled,
+            sheet,
+            headerRow: parseInt(headerRow),
+            sourceName
+        });
+    });
+    
+    // 数据清洗配置
+    config.cleaning = {
+        cleanNumeric: document.getElementById('cleanNumeric')?.checked || false,
+        parseDates: document.getElementById('parseDates')?.checked || false,
+        removeDuplicates: document.getElementById('removeDuplicates')?.checked || false,
+        removeEmptyRows: document.getElementById('removeEmptyRows')?.checked || false,
+        keepStrategy: document.getElementById('keepStrategy')?.value || 'first',
+        keyColumns: document.getElementById('keyColumns')?.value || '',
+        mergeStrategy: document.getElementById('mergeStrategy')?.value || 'outer'
+    };
+    
+    // 列配置
+    document.querySelectorAll('#columnConfigBody tr').forEach(row => {
+        const originalNameElement = row.querySelector('.column-original-name');
+        const displayNameElement = row.querySelector('.column-display-name');
+        const columnTypeElement = row.querySelector('.column-type');
+        const visibleElement = row.querySelector('.column-visible');
+        const orderElement = row.querySelector('.column-order');
+        
+        if (originalNameElement && displayNameElement && columnTypeElement && visibleElement && orderElement) {
+            const originalName = originalNameElement.textContent || '';
+            const displayName = displayNameElement.value || '';
+            const columnType = columnTypeElement.value || 'auto';
+            const visible = visibleElement.checked;
+            const order = parseInt(orderElement.value) || 0;
+            
+            config.columns.push({
+                originalName,
+                displayName: displayName || originalName,
+                columnType,
+                visible,
+                order
+            });
+        }
+    });
+    
+    // 导出配置
+    config.export = {
+        format: document.getElementById('exportFormat')?.value || 'xlsx',
+        filename: document.getElementById('exportFilename')?.value || 'merged_data'
+    };
+    
+    return config;
+}
+
+// 导出配置到文件
+function doExportConfig() {
+    try {
+        const config = getCurrentConfig();
+        const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `excel_merge_config_${new Date().toISOString().slice(0, 19).replace(/[T:]/g, '_')}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        alert('配置文件已导出');
+    } catch (error) {
+        alert('导出配置失败：' + error.message);
+    }
+}
+
+// 导入配置文件
+function doImportConfig() {
+    const fileInput = document.getElementById('configFileInput');
+    const file = fileInput.files[0];
+    
+    if (!file) {
+        alert('请选择配置文件');
+        return;
+    }
+    
+    if (!file.name.toLowerCase().endsWith('.json')) {
+        alert('请选择JSON格式的配置文件');
+        return;
+    }
+    
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const config = JSON.parse(e.target.result);
+            applyImportedConfig(config);
+            alert('配置已成功导入');
+        } catch (error) {
+            alert('配置文件格式错误：' + error.message);
+        }
+    };
+    reader.readAsText(file);
+}
+
+// 应用导入的配置
+function applyImportedConfig(config) {
+    // 应用文件配置
+    if (config.files) {
+        config.files.forEach(fileConfig => {
+            const fileElement = document.querySelector(`[data-file-id="${fileConfig.fileId}"]`);
+            if (fileElement) {
+                const enableCheckbox = fileElement.querySelector('.file-enable');
+                const sheetSelect = fileElement.querySelector('.sheet-select');
+                const headerInput = fileElement.querySelector('.header-row');
+                const sourceInput = fileElement.querySelector('.source-name');
+                
+                if (enableCheckbox) enableCheckbox.checked = fileConfig.enabled;
+                if (sheetSelect && sheetSelect.querySelector(`option[value="${fileConfig.sheet}"]`)) {
+                    sheetSelect.value = fileConfig.sheet;
+                }
+                if (headerInput) headerInput.value = fileConfig.headerRow;
+                if (sourceInput) sourceInput.value = fileConfig.sourceName;
+            }
+        });
+    }
+    
+    // 应用数据清洗配置
+    if (config.cleaning) {
+        const cleaningConfig = config.cleaning;
+        if (document.getElementById('cleanNumeric')) document.getElementById('cleanNumeric').checked = cleaningConfig.cleanNumeric;
+        if (document.getElementById('parseDates')) document.getElementById('parseDates').checked = cleaningConfig.parseDates;
+        if (document.getElementById('removeDuplicates')) document.getElementById('removeDuplicates').checked = cleaningConfig.removeDuplicates;
+        if (document.getElementById('removeEmptyRows')) document.getElementById('removeEmptyRows').checked = cleaningConfig.removeEmptyRows;
+        if (document.getElementById('keepStrategy')) document.getElementById('keepStrategy').value = cleaningConfig.keepStrategy;
+        if (document.getElementById('keyColumns')) document.getElementById('keyColumns').value = cleaningConfig.keyColumns;
+        if (document.getElementById('mergeStrategy')) document.getElementById('mergeStrategy').value = cleaningConfig.mergeStrategy;
+    }
+    
+    // 应用导出配置
+    if (config.export) {
+        if (document.getElementById('exportFormat')) document.getElementById('exportFormat').value = config.export.format;
+        if (document.getElementById('exportFilename')) document.getElementById('exportFilename').value = config.export.filename;
+    }
+    
+    // 如果有列配置，重新加载列配置表格
+    if (config.columns && config.columns.length > 0) {
+        const tbody = document.getElementById('columnConfigBody');
+        tbody.innerHTML = '';
+        
+        config.columns.forEach(columnConfig => {
+            addColumnConfigRow(
+                columnConfig.originalName,
+                columnConfig.displayName,
+                columnConfig.columnType,
+                columnConfig.visible,
+                columnConfig.order
+            );
+        });
+    }
+}
+
+// 预览当前配置
+function previewCurrentConfig() {
+    try {
+        const config = getCurrentConfig();
+        document.getElementById('configPreview').textContent = JSON.stringify(config, null, 2);
+    } catch (error) {
+        document.getElementById('configPreview').textContent = '获取配置失败：' + error.message;
+    }
+}
+
+// ================ 配置缓存功能 ================
+
+// 获取缓存配置的存储键名
+function getCacheKey() {
+    return 'excel_merge_configs_cache';
+}
+
+// 从localStorage加载缓存的配置
+function loadCachedConfigs() {
+    try {
+        const cache = localStorage.getItem(getCacheKey());
+        return cache ? JSON.parse(cache) : {};
+    } catch (error) {
+        console.error('加载缓存配置失败:', error);
+        return {};
+    }
+}
+
+// 保存配置到localStorage
+function saveCachedConfigs(configs) {
+    try {
+        localStorage.setItem(getCacheKey(), JSON.stringify(configs));
+        return true;
+    } catch (error) {
+        console.error('保存缓存配置失败:', error);
+        alert('保存配置失败，可能是存储空间不足：' + error.message);
+        return false;
+    }
+}
+
+// 更新缓存配置下拉列表
+function updateCachedConfigSelect() {
+    const select = document.getElementById('cachedConfigSelect');
+    const configs = loadCachedConfigs();
+    
+    // 清空现有选项
+    select.innerHTML = '<option value="">选择要应用的历史配置...</option>';
+    
+    // 添加缓存的配置选项
+    Object.keys(configs).forEach(name => {
+        const config = configs[name];
+        const option = document.createElement('option');
+        option.value = name;
+        
+        // 显示配置名称和保存时间
+        const saveTime = new Date(config.timestamp).toLocaleString('zh-CN');
+        option.textContent = `${name} (${saveTime})`;
+        option.title = `保存时间: ${saveTime}\n版本: ${config.version || '1.0'}`;
+        
+        select.appendChild(option);
+    });
+}
+
+// 保存当前配置到缓存
+function saveCurrentConfigToCache() {
+    const nameInput = document.getElementById('configCacheName');
+    const configName = nameInput.value.trim();
+    
+    if (!configName) {
+        alert('请输入配置名称');
+        nameInput.focus();
+        return;
+    }
+    
+    try {
+        const currentConfig = getCurrentConfig();
+        const configs = loadCachedConfigs();
+        
+        // 检查是否已存在同名配置
+        if (configs[configName]) {
+            if (!confirm(`配置 "${configName}" 已存在，是否覆盖？`)) {
+                return;
+            }
+        }
+        
+        // 保存配置
+        configs[configName] = currentConfig;
+        
+        if (saveCachedConfigs(configs)) {
+            alert(`配置 "${configName}" 已保存到缓存`);
+            nameInput.value = '';
+            updateCachedConfigSelect();
+        }
+        
+    } catch (error) {
+        alert('保存配置失败：' + error.message);
+    }
+}
+
+// 应用缓存的配置
+function applyCachedConfig() {
+    const select = document.getElementById('cachedConfigSelect');
+    const configName = select.value;
+    
+    if (!configName) {
+        alert('请选择要应用的配置');
+        return;
+    }
+    
+    try {
+        const configs = loadCachedConfigs();
+        const config = configs[configName];
+        
+        if (!config) {
+            alert('找不到指定的配置');
+            return;
+        }
+        
+        if (confirm(`确定要应用配置 "${configName}" 吗？这将覆盖当前所有设置。`)) {
+            applyImportedConfig(config);
+            alert('配置已成功应用');
+            
+            // 关闭模态框
+            const modal = bootstrap.Modal.getInstance(document.getElementById('configImportExportModal'));
+            if (modal) {
+                modal.hide();
+            }
+        }
+        
+    } catch (error) {
+        alert('应用配置失败：' + error.message);
+    }
+}
+
+// 清空所有缓存配置
+function clearCachedConfigs() {
+    const configs = loadCachedConfigs();
+    const configCount = Object.keys(configs).length;
+    
+    if (configCount === 0) {
+        alert('没有缓存的配置需要清空');
+        return;
+    }
+    
+    if (confirm(`确定要清空所有 ${configCount} 个缓存配置吗？此操作不可恢复。`)) {
+        try {
+            localStorage.removeItem(getCacheKey());
+            updateCachedConfigSelect();
+            alert('缓存配置已清空');
+        } catch (error) {
+            alert('清空缓存失败：' + error.message);
+        }
+    }
+}
+
+// 自动保存配置（在用户操作时触发）
+function autoSaveConfig() {
+    try {
+        const currentConfig = getCurrentConfig();
+        const autoSaveName = `自动保存_${new Date().toISOString().slice(0, 19).replace(/[T:]/g, '_')}`;
+        const configs = loadCachedConfigs();
+        
+        // 保留最近的5个自动保存配置
+        const autoSaveConfigs = Object.keys(configs)
+            .filter(name => name.startsWith('自动保存_'))
+            .sort()
+            .slice(-4); // 保留4个，加上新的一个总共5个
+        
+        // 删除老的自动保存配置
+        Object.keys(configs).forEach(name => {
+            if (name.startsWith('自动保存_') && !autoSaveConfigs.includes(name)) {
+                delete configs[name];
+            }
+        });
+        
+        // 添加新的自动保存配置
+        configs[autoSaveName] = currentConfig;
+        
+        saveCachedConfigs(configs);
+        console.log('配置已自动保存:', autoSaveName);
+        
+    } catch (error) {
+        console.warn('自动保存配置失败:', error);
+    }
+}
+
+// 初始化配置缓存功能
+function initConfigCache() {
+    // 页面加载时更新缓存配置列表
+    updateCachedConfigSelect();
+    
+    // 监听表单变化，实现自动保存（防抖）
+    let autoSaveTimer;
+    function debounceAutoSave() {
+        clearTimeout(autoSaveTimer);
+        autoSaveTimer = setTimeout(autoSaveConfig, 5000); // 5秒后自动保存
+    }
+    
+    // 监听关键配置项的变化
+    document.addEventListener('change', function(e) {
+        if (e.target.matches('.file-enable, .sheet-select, .header-row, .source-name, #cleanNumeric, #parseDates, #removeDuplicates, #removeEmptyRows, #keepStrategy, #mergeStrategy, #exportFormat, #exportFilename')) {
+            debounceAutoSave();
+        }
+    });
+}
+
+// 页面加载完成后初始化缓存功能
+document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(initConfigCache, 500); // 延迟初始化，确保所有元素都已加载
+});
 </script>
 {% endblock %}

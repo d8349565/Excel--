@@ -416,21 +416,65 @@ function displayPreviewData(data) {
             </small>
         </div>
         <div class="table-responsive">
-            <table class="table table-sm table-bordered">
+            <style>
+                .preview-table-index {
+                    white-space: nowrap;
+                    table-layout: fixed;
+                    width: 100%;
+                }
+                .preview-table-index th, .preview-table-index td {
+                    max-width: 200px;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                    padding: 4px 8px;
+                    border: 1px solid #dee2e6;
+                }
+                .preview-table-index th {
+                    position: sticky;
+                    top: 0;
+                    background-color: #f8f9fa;
+                    z-index: 10;
+                    font-weight: 600;
+                }
+                .preview-table-index td:hover {
+                    background-color: #f8f9fa;
+                    cursor: pointer;
+                    position: relative;
+                }
+                .preview-table-index td:hover::after {
+                    content: attr(title);
+                    position: absolute;
+                    background: #333;
+                    color: white;
+                    padding: 4px 8px;
+                    border-radius: 4px;
+                    white-space: normal;
+                    z-index: 1000;
+                    top: -5px;
+                    left: 0;
+                    max-width: 300px;
+                    word-wrap: break-word;
+                    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+                }
+            </style>
+            <table class="table table-sm table-bordered preview-table-index">
                 <thead class="table-light">
                     <tr>
     `;
     
-    columns.forEach(col => {
-        html += `<th>${col}</th>`;
+    columns.forEach((col, index) => {
+        const width = Math.max(120, Math.min(200, col.length * 10 + 50));
+        html += `<th style="width: ${width}px;" title="${col}">${col}</th>`;
     });
     html += '</tr></thead><tbody>';
     
     rows.forEach(row => {
         html += '<tr>';
         columns.forEach(col => {
-            const value = row[col] || '';
-            html += `<td>${value}</td>`;
+            const value = String(row[col] || '');
+            const displayValue = value.length > 25 ? value.substring(0, 25) + '...' : value;
+            html += `<td title="${value.replace(/"/g, '&quot;')}">${displayValue}</td>`;
         });
         html += '</tr>';
     });
