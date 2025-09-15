@@ -1,0 +1,53 @@
+# Git
+.git
+.gitignore
+
+# 文档和图片
+README.md
+image/
+*.md
+
+# Python缓存
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# 虚拟环境
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 临时文件
+uploads/*
+results/*
+logs/*
+*.log
+
+# Docker
+docker/
+Dockerfile
+docker-compose.yml
+.dockerignore
