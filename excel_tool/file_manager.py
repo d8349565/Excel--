@@ -50,6 +50,18 @@ class FileManager:
         else:
             logging.error(f"结果文件夹创建失败: {self.results_folder}")
     
+    def get_user_upload_folder(self, session_id):
+        """获取用户专用上传文件夹"""
+        user_folder = os.path.join(self.upload_folder, session_id)
+        os.makedirs(user_folder, exist_ok=True)
+        return user_folder
+    
+    def get_user_results_folder(self, session_id):
+        """获取用户专用结果文件夹"""
+        user_folder = os.path.join(self.results_folder, session_id)
+        os.makedirs(user_folder, exist_ok=True)
+        return user_folder
+    
     def allowed_file(self, filename: str) -> bool:
         """检查文件扩展名是否被允许"""
         return '.' in filename and \
@@ -62,13 +74,14 @@ class FileManager:
         file.seek(0)     # 回到文件开头
         return size
     
-    def save_uploaded_file(self, file, original_filename: str) -> Dict:
+    def save_uploaded_file(self, file, original_filename: str, session_id: str = None) -> Dict:
         """
         保存上传的文件
         
         Args:
             file: 上传的文件对象
             original_filename: 原始文件名
+            session_id: 用户会话ID，用于文件隔离
             
         Returns:
             包含文件信息的字典
@@ -89,8 +102,14 @@ class FileManager:
             extension = safe_filename.rsplit('.', 1)[1].lower()
             saved_filename = f"{file_id}.{extension}"
             
+            # 根据是否有session_id决定保存位置
+            if session_id:
+                user_upload_folder = self.get_user_upload_folder(session_id)
+                file_path = os.path.join(user_upload_folder, saved_filename)
+            else:
+                file_path = os.path.join(self.upload_folder, saved_filename)
+            
             # 保存文件
-            file_path = os.path.join(self.upload_folder, saved_filename)
             file.save(file_path)
             
             # 获取文件信息
@@ -102,6 +121,7 @@ class FileManager:
                 'file_size': file_size,
                 'extension': extension,
                 'upload_time': datetime.now().isoformat(),
+                'session_id': session_id,
                 'sheets': []
             }
             
@@ -125,9 +145,14 @@ class FileManager:
             logging.error(f"保存文件时出错: {e}")
             raise
     
-    def get_file_info(self, file_id: str) -> Optional[Dict]:
+    def get_file_info(self, file_id: str, session_id: str = None) -> Optional[Dict]:
         """获取文件信息"""
-        metadata_path = os.path.join(self.upload_folder, f"{file_id}_metadata.json")
+        if session_id:
+            user_folder = self.get_user_upload_folder(session_id)
+            metadata_path = os.path.join(user_folder, f"{file_id}_metadata.json")
+        else:
+            metadata_path = os.path.join(self.upload_folder, f"{file_id}_metadata.json")
+            
         if os.path.exists(metadata_path):
             try:
                 with open(metadata_path, 'r', encoding='utf-8') as f:
@@ -138,14 +163,20 @@ class FileManager:
     
     def _save_file_metadata(self, file_info: Dict):
         """保存文件元信息到JSON文件"""
-        metadata_path = os.path.join(self.upload_folder, f"{file_info['file_id']}_metadata.json")
+        session_id = file_info.get('session_id')
+        if session_id:
+            user_folder = self.get_user_upload_folder(session_id)
+            metadata_path = os.path.join(user_folder, f"{file_info['file_id']}_metadata.json")
+        else:
+            metadata_path = os.path.join(self.upload_folder, f"{file_info['file_id']}_metadata.json")
+            
         try:
             with open(metadata_path, 'w', encoding='utf-8') as f:
                 json.dump(file_info, f, ensure_ascii=False, indent=2)
         except Exception as e:
             logging.error(f"保存文件元信息失败: {e}")
     
-    def preview_file(self, file_id: str, sheet_name: str = None, rows: int = 50, header_row: int = 0) -> Dict:
+    def preview_file(self, file_id: str, sheet_name: str = None, rows: int = 50, header_row: int = 0, session_id: str = None) -> Dict:
         """
         预览文件内容
         
@@ -154,12 +185,13 @@ class FileManager:
             sheet_name: sheet名称（对Excel文件）
             rows: 预览行数
             header_row: 表头行号（0-based）
+            session_id: 用户会话ID
             
         Returns:
             包含预览数据的字典
         """
         try:
-            file_info = self.get_file_info(file_id)
+            file_info = self.get_file_info(file_id, session_id)
             if not file_info:
                 raise ValueError(f"文件不存在: {file_id}")
             
@@ -217,11 +249,11 @@ class FileManager:
                     continue
             raise ValueError(f"无法确定CSV文件的编码格式: {file_path}")
     
-    def read_full_file(self, file_id: str, sheet_name: str = None, header_row: int = 0) -> pd.DataFrame:
+    def read_full_file(self, file_id: str, sheet_name: str = None, header_row: int = 0, session_id: str = None) -> pd.DataFrame:
         """
         读取完整文件数据
         """
-        file_info = self.get_file_info(file_id)
+        file_info = self.get_file_info(file_id, session_id)
         if not file_info:
             raise ValueError(f"文件不存在: {file_id}")
         
@@ -237,7 +269,7 @@ class FileManager:
         else:
             raise ValueError(f"不支持的文件类型: {extension}")
     
-    def save_result_file(self, df: pd.DataFrame, filename: str, format: str = 'xlsx') -> str:
+    def save_result_file(self, df: pd.DataFrame, filename: str, format: str = 'xlsx', session_id: str = None) -> str:
         """
         保存结果文件
         
@@ -245,20 +277,27 @@ class FileManager:
             df: 要保存的DataFrame
             filename: 文件名（不含扩展名）
             format: 文件格式 ('xlsx' 或 'csv')
+            session_id: 用户会话ID，用于文件隔离
             
         Returns:
             结果文件的路径
         """
         try:
-            # 确保results文件夹存在
-            if not os.path.exists(self.results_folder):
-                os.makedirs(self.results_folder, exist_ok=True)
-                logging.info(f"创建results文件夹: {self.results_folder}")
+            # 获取结果文件夹路径
+            if session_id:
+                results_folder = self.get_user_results_folder(session_id)
+            else:
+                results_folder = self.results_folder
+                
+            # 确保结果文件夹存在
+            if not os.path.exists(results_folder):
+                os.makedirs(results_folder, exist_ok=True)
+                logging.info(f"创建results文件夹: {results_folder}")
             
             # 生成唯一的结果文件名
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             result_filename = f"{filename}_{timestamp}.{format}"
-            result_path = os.path.join(self.results_folder, result_filename)
+            result_path = os.path.join(results_folder, result_filename)
             
             logging.info(f"准备保存结果文件: {result_path}")
             logging.info(f"DataFrame形状: {df.shape}")
@@ -318,17 +357,22 @@ class FileManager:
         except Exception as e:
             logging.error(f"清理文件时出错: {e}")
     
-    def delete_file(self, file_id: str):
+    def delete_file(self, file_id: str, session_id: str = None):
         """删除指定文件及其元信息"""
         try:
-            file_info = self.get_file_info(file_id)
+            file_info = self.get_file_info(file_id, session_id)
             if file_info:
                 # 删除文件
                 if os.path.exists(file_info['file_path']):
                     os.remove(file_info['file_path'])
                 
                 # 删除元信息文件
-                metadata_path = os.path.join(self.upload_folder, f"{file_id}_metadata.json")
+                if session_id:
+                    user_folder = self.get_user_upload_folder(session_id)
+                    metadata_path = os.path.join(user_folder, f"{file_id}_metadata.json")
+                else:
+                    metadata_path = os.path.join(self.upload_folder, f"{file_id}_metadata.json")
+                
                 if os.path.exists(metadata_path):
                     os.remove(metadata_path)
                 
@@ -337,24 +381,38 @@ class FileManager:
         except Exception as e:
             logging.error(f"删除文件时出错: {e}")
     
-    def get_file_list(self) -> List[Dict]:
-        """获取所有上传文件的列表"""
+    def get_file_list(self, session_id: str = None) -> List[Dict]:
+        """获取文件列表，如果提供session_id则只返回该用户的文件"""
         files = []
         try:
-            for filename in os.listdir(self.upload_folder):
-                if filename.endswith('_metadata.json'):
-                    file_id = filename.replace('_metadata.json', '')
-                    file_info = self.get_file_info(file_id)
-                    if file_info:
-                        files.append(file_info)
+            if session_id:
+                # 获取用户专用文件夹中的文件
+                user_folder = self.get_user_upload_folder(session_id)
+                for filename in os.listdir(user_folder):
+                    if filename.endswith('_metadata.json'):
+                        file_id = filename.replace('_metadata.json', '')
+                        file_info = self.get_file_info(file_id, session_id)
+                        if file_info:
+                            files.append(file_info)
+            else:
+                # 获取所有文件（向后兼容）
+                for filename in os.listdir(self.upload_folder):
+                    if filename.endswith('_metadata.json'):
+                        file_id = filename.replace('_metadata.json', '')
+                        file_info = self.get_file_info(file_id)
+                        if file_info:
+                            files.append(file_info)
         except Exception as e:
             logging.error(f"获取文件列表时出错: {e}")
         
         return sorted(files, key=lambda x: x['upload_time'], reverse=True)
     
-    def clear_all_files(self) -> Dict[str, int]:
+    def clear_all_files(self, session_id: str = None) -> Dict[str, int]:
         """
-        清理所有上传的文件和元数据
+        清理上传的文件和元数据
+        
+        Args:
+            session_id: 用户会话ID，如果提供则只清理该用户的文件
         
         Returns:
             包含删除统计的字典
@@ -362,11 +420,20 @@ class FileManager:
         stats = {'files_deleted': 0, 'metadata_deleted': 0, 'errors': 0}
         
         try:
-            if not os.path.exists(self.upload_folder):
-                return stats
+            if session_id:
+                # 清理用户专用文件夹
+                user_folder = self.get_user_upload_folder(session_id)
+                if not os.path.exists(user_folder):
+                    return stats
+                folder_to_clean = user_folder
+            else:
+                # 清理所有文件（向后兼容）
+                if not os.path.exists(self.upload_folder):
+                    return stats
+                folder_to_clean = self.upload_folder
                 
-            for filename in os.listdir(self.upload_folder):
-                file_path = os.path.join(self.upload_folder, filename)
+            for filename in os.listdir(folder_to_clean):
+                file_path = os.path.join(folder_to_clean, filename)
                 try:
                     if os.path.isfile(file_path):
                         os.remove(file_path)

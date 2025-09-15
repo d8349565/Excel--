@@ -1,4 +1,4 @@
-from flask import Flask, request, render_template, redirect, url_for, jsonify, send_file, flash
+from flask import Flask, request, render_template, redirect, url_for, jsonify, send_file, flash, session
 import os
 import logging
 from datetime import datetime
@@ -6,11 +6,28 @@ from werkzeug.utils import secure_filename
 import atexit
 import threading
 import time
+import uuid
+from functools import wraps
 
 from config import config
 from file_manager import FileManager
 from data_processor import DataProcessor
 from task_manager import task_manager, create_merge_task_handler
+
+def login_required(f):
+    """装饰器：检查用户是否已登录"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'authenticated' not in session or not session['authenticated']:
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+def get_session_id():
+    """获取或创建会话ID"""
+    if 'session_id' not in session:
+        session['session_id'] = str(uuid.uuid4())
+    return session['session_id']
 
 def create_app(config_name=None):
     """创建Flask应用实例"""
@@ -50,16 +67,44 @@ def create_app(config_name=None):
     atexit.register(lambda: task_manager.stop())
     
     # 路由定义
+    @app.route('/login', methods=['GET', 'POST'])
+    def login():
+        """用户登录"""
+        if request.method == 'POST':
+            password = request.form.get('password', '').strip()
+            
+            if password == app.config['ACCESS_PASSWORD']:
+                session['authenticated'] = True
+                session['session_id'] = str(uuid.uuid4())
+                session.permanent = True
+                flash('登录成功，欢迎使用Excel/CSV汇总工具！', 'success')
+                return redirect(url_for('index'))
+            else:
+                flash('密码错误，请重新输入', 'error')
+        
+        return render_template('login.html')
+    
+    @app.route('/logout')
+    def logout():
+        """用户登出"""
+        session.clear()
+        flash('您已安全退出', 'info')
+        return redirect(url_for('login'))
+    
     @app.route('/')
+    @login_required
     def index():
         """首页"""
-        files = file_manager.get_file_list()
+        session_id = get_session_id()
+        files = file_manager.get_file_list(session_id)
         return render_template('index.html', files=files)
     
     @app.route('/upload', methods=['POST'])
+    @login_required
     def upload_files():
         """处理文件上传"""
         try:
+            session_id = get_session_id()
             uploaded_files = request.files.getlist('files')
             
             if not uploaded_files or all(f.filename == '' for f in uploaded_files):
@@ -73,7 +118,7 @@ def create_app(config_name=None):
                     continue
                 
                 try:
-                    file_info = file_manager.save_uploaded_file(file, file.filename)
+                    file_info = file_manager.save_uploaded_file(file, file.filename, session_id)
                     file_ids.append(file_info['file_id'])
                     flash(f'文件 {file.filename} 上传成功', 'success')
                 except Exception as e:
@@ -89,8 +134,10 @@ def create_app(config_name=None):
             return redirect(url_for('index'))
     
     @app.route('/configure')
+    @login_required
     def configure():
         """配置页面"""
+        session_id = get_session_id()
         file_ids_str = request.args.get('file_ids', '')
         
         if not file_ids_str:
@@ -101,7 +148,7 @@ def create_app(config_name=None):
         files_info = []
         
         for file_id in file_ids:
-            file_info = file_manager.get_file_info(file_id)
+            file_info = file_manager.get_file_info(file_id, session_id)
             if file_info:
                 files_info.append(file_info)
         
@@ -112,9 +159,11 @@ def create_app(config_name=None):
         return render_template('configure.html', files=files_info)
     
     @app.route('/api/preview/<file_id>')
+    @login_required
     def preview_file(file_id):
         """文件预览API"""
         try:
+            session_id = get_session_id()
             sheet_name = request.args.get('sheet_name')
             rows = int(request.args.get('rows', app.config['DEFAULT_PREVIEW_ROWS']))
             header_row = int(request.args.get('header_row', 0))
@@ -122,7 +171,15 @@ def create_app(config_name=None):
             # 限制预览行数
             rows = min(rows, app.config['MAX_PREVIEW_ROWS'])
             
-            preview_data = file_manager.preview_file(file_id, sheet_name, rows, header_row)
+            # 验证文件是否属于当前用户
+            file_info = file_manager.get_file_info(file_id, session_id)
+            if not file_info:
+                return jsonify({
+                    'success': False,
+                    'error': '文件不存在或无权访问'
+                }), 404
+            
+            preview_data = file_manager.preview_file(file_id, sheet_name, rows, header_row, session_id)
             
             return jsonify({
                 'success': True,
@@ -136,14 +193,24 @@ def create_app(config_name=None):
             }), 400
     
     @app.route('/api/detect_columns/<file_id>')
+    @login_required
     def detect_columns(file_id):
         """检测列类型API"""
         try:
+            session_id = get_session_id()
             sheet_name = request.args.get('sheet_name')
             header_row = int(request.args.get('header_row', 0))
             
+            # 验证文件权限
+            file_info = file_manager.get_file_info(file_id, session_id)
+            if not file_info:
+                return jsonify({
+                    'success': False,
+                    'error': '文件不存在或无权访问'
+                }), 404
+            
             # 读取部分数据用于类型检测
-            df = file_manager.read_full_file(file_id, sheet_name, header_row)
+            df = file_manager.read_full_file(file_id, sheet_name, header_row, session_id)
             
             # 标准化列名
             df = data_processor.standardize_column_names(df)
@@ -164,9 +231,11 @@ def create_app(config_name=None):
             }), 400
     
     @app.route('/get_merged_columns', methods=['POST'])
+    @login_required
     def get_merged_columns():
         """获取合并后的列信息"""
         try:
+            session_id = get_session_id()
             data = request.get_json()
             file_configs = data.get('file_configs', [])
             
@@ -180,8 +249,13 @@ def create_app(config_name=None):
                 sheet_name = config.get('sheet_name', 0)
                 header_row = config.get('header_row', 0)
                 
+                # 验证文件权限
+                file_info = file_manager.get_file_info(file_id, session_id)
+                if not file_info:
+                    continue
+                
                 # 读取数据
-                df = file_manager.read_full_file(file_id, sheet_name, header_row)
+                df = file_manager.read_full_file(file_id, sheet_name, header_row, session_id)
                 if df is not None:
                     dataframes.append((df, file_id))
             
@@ -231,9 +305,11 @@ def create_app(config_name=None):
             return jsonify({'success': False, 'error': str(e)})
 
     @app.route('/preview_merge', methods=['POST'])
+    @login_required
     def preview_merge():
         """预览合并结果"""
         try:
+            session_id = get_session_id()
             data = request.get_json()
             file_configs = data.get('file_configs', [])
             cleaning_options = data.get('cleaning_options', {})
@@ -249,8 +325,13 @@ def create_app(config_name=None):
                 header_row = config.get('header_row', 0)
                 source_name = config.get('source_name', f'文件{len(dataframes)+1}')
                 
+                # 验证文件权限
+                file_info = file_manager.get_file_info(file_id, session_id)
+                if not file_info:
+                    continue
+                
                 # 读取数据
-                df = file_manager.read_full_file(file_id, sheet_name, header_row)
+                df = file_manager.read_full_file(file_id, sheet_name, header_row, session_id)
                 if df is not None:
                     # 限制预览数据量，每个文件最多取10行
                     preview_df = df.head(10)
@@ -325,9 +406,11 @@ def create_app(config_name=None):
             return jsonify({'success': False, 'error': str(e)})
 
     @app.route('/submit_task', methods=['POST'])
+    @login_required
     def submit_task():
         """提交合并任务"""
         try:
+            session_id = get_session_id()
             data = request.get_json()
             
             file_configs = data.get('file_configs', [])
@@ -340,11 +423,23 @@ def create_app(config_name=None):
                     'error': '没有指定要处理的文件'
                 }), 400
             
+            # 验证所有文件都属于当前用户
+            for config in file_configs:
+                file_id = config.get('file_id')
+                if file_id:
+                    file_info = file_manager.get_file_info(file_id, session_id)
+                    if not file_info:
+                        return jsonify({
+                            'success': False,
+                            'error': f'文件 {file_id} 不存在或无权访问'
+                        }), 403
+            
             # 提交任务
             task_id = task_manager.submit_task('merge_data', {
                 'file_configs': file_configs,
                 'cleaning_options': cleaning_options,
-                'export_options': export_options
+                'export_options': export_options,
+                'session_id': session_id
             })
             
             return jsonify({
@@ -359,6 +454,7 @@ def create_app(config_name=None):
             }), 400
     
     @app.route('/task/<task_id>')
+    @login_required
     def task_status(task_id):
         """任务状态页面"""
         task = task_manager.get_task(task_id)
@@ -386,12 +482,21 @@ def create_app(config_name=None):
         })
     
     @app.route('/download/<filename>')
+    @login_required
     def download_file(filename):
         """下载结果文件"""
         try:
+            session_id = get_session_id()
             # 安全检查文件名
             safe_filename = secure_filename(filename)
-            file_path = os.path.join(app.config['RESULTS_FOLDER'], safe_filename)
+            
+            # 使用用户专用的结果文件夹
+            user_results_folder = file_manager.get_user_results_folder(session_id)
+            file_path = os.path.join(user_results_folder, safe_filename)
+            
+            # 如果用户文件夹中没有，再尝试主文件夹（向后兼容）
+            if not os.path.exists(file_path):
+                file_path = os.path.join(app.config['RESULTS_FOLDER'], safe_filename)
             
             if not os.path.exists(file_path):
                 flash('请求的文件不存在或已被删除', 'error')
@@ -405,10 +510,12 @@ def create_app(config_name=None):
             return redirect(url_for('index'))
     
     @app.route('/api/delete_file/<file_id>', methods=['DELETE'])
+    @login_required
     def delete_file(file_id):
         """删除文件API"""
         try:
-            file_manager.delete_file(file_id)
+            session_id = get_session_id()
+            file_manager.delete_file(file_id, session_id)
             return jsonify({'success': True})
         except Exception as e:
             return jsonify({
@@ -417,10 +524,12 @@ def create_app(config_name=None):
             }), 400
     
     @app.route('/api/clear_all_files', methods=['POST'])
+    @login_required
     def clear_all_files():
         """清理所有文件API"""
         try:
-            stats = file_manager.clear_all_files()
+            session_id = get_session_id()
+            stats = file_manager.clear_all_files(session_id)
             return jsonify({
                 'success': True, 
                 'message': f'已清理 {stats["files_deleted"]} 个文件和 {stats["metadata_deleted"]} 个元数据记录',
@@ -431,6 +540,7 @@ def create_app(config_name=None):
             return jsonify({'success': False, 'error': '清理失败，请稍后重试'}), 500
     
     @app.route('/api/system_status')
+    @login_required
     def system_status():
         """系统状态API"""
         return jsonify({

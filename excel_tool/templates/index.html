@@ -3,6 +3,37 @@
 {% block title %}首页 - Excel/CSV 汇总工具{% endblock %}
 
 {% block content %}
+<!-- 使用方法说明 -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card border-info">
+            <div class="card-header bg-info text-white">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-info-circle"></i> 使用方法
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6 class="text-primary"><i class="bi bi-1-circle"></i> 上传文件</h6>
+                        <p class="small mb-3">支持 Excel (.xlsx, .xls) 和 CSV 文件，可同时上传多个文件进行合并处理。</p>
+                        
+                        <h6 class="text-primary"><i class="bi bi-2-circle"></i> 配置合并</h6>
+                        <p class="small mb-3">选择工作表、设置表头行、配置数据清洗选项，预览合并效果。</p>
+                    </div>
+                    <div class="col-md-6">
+                        <h6 class="text-primary"><i class="bi bi-3-circle"></i> 开始处理</h6>
+                        <p class="small mb-3">提交合并任务，系统自动处理数据并生成结果文件。</p>
+                        
+                        <h6 class="text-primary"><i class="bi bi-4-circle"></i> 下载结果</h6>
+                        <p class="small mb-0">处理完成后下载 Excel 或 CSV 格式的合并结果文件。</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="row">
     <div class="col-12">
         <div class="card">

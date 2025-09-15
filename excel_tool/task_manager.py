@@ -314,6 +314,7 @@ def create_merge_task_handler(file_manager, data_processor):
             file_configs = parameters.get('file_configs', [])
             cleaning_options = parameters.get('cleaning_options', {})
             export_options = parameters.get('export_options', {})
+            session_id = parameters.get('session_id')  # 获取会话ID
             
             if not file_configs:
                 raise ValueError("没有指定要处理的文件")
@@ -331,7 +332,7 @@ def create_merge_task_handler(file_manager, data_processor):
                 source_name = config.get('source_name', f"文件{i+1}")
                 
                 try:
-                    df = file_manager.read_full_file(file_id, sheet_name, header_row)
+                    df = file_manager.read_full_file(file_id, sheet_name, header_row, session_id)
                     dataframes.append((df, source_name))
                     
                     progress_callback(
@@ -353,7 +354,7 @@ def create_merge_task_handler(file_manager, data_processor):
             export_filename = export_options.get('filename', 'merged_data')
             
             result_path = file_manager.save_result_file(
-                result_df, export_filename, export_format
+                result_df, export_filename, export_format, session_id
             )
             
             # 确保结果文件存在
