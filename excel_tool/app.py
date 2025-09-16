@@ -13,6 +13,7 @@ from config import config
 from file_manager import FileManager
 from data_processor import DataProcessor
 from task_manager import task_manager, create_merge_task_handler
+from user_logger import UserLogger
 
 def login_required(f):
     """装饰器：检查用户是否已登录"""
@@ -20,6 +21,18 @@ def login_required(f):
     def decorated_function(*args, **kwargs):
         if 'authenticated' not in session or not session['authenticated']:
             return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+def admin_required(f):
+    """装饰器：检查用户是否具有管理员权限"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'authenticated' not in session or not session['authenticated']:
+            return redirect(url_for('login'))
+        if 'is_admin' not in session or not session['is_admin']:
+            flash('需要管理员权限才能访问此页面', 'error')
+            return redirect(url_for('admin_login'))
         return f(*args, **kwargs)
     return decorated_function
 
@@ -50,6 +63,12 @@ def create_app(config_name=None):
     # 初始化组件
     file_manager = FileManager(app)
     data_processor = DataProcessor(app.config)
+    user_logger = UserLogger(app.config)
+    
+    # 将组件添加到app实例
+    app.file_manager = file_manager
+    app.data_processor = data_processor
+    app.user_logger = user_logger
     
     # 启动任务管理器
     task_manager.max_workers = app.config.get('MAX_CONCURRENT_TASKS', 1)
@@ -69,6 +88,23 @@ def create_app(config_name=None):
     # 注册关闭处理
     atexit.register(lambda: task_manager.stop())
     
+    # 添加模板函数
+    @app.template_global()
+    def get_operation_name(operation):
+        """获取操作类型的中文名称"""
+        operation_names = {
+            'user_login': '用户登录',
+            'user_logout': '用户登出',
+            'file_upload': '文件上传',
+            'file_delete': '文件删除',
+            'file_preview': '文件预览',
+            'merge_task_submit': '提交合并任务',
+            'merge_task_complete': '合并完成',
+            'file_download': '文件下载',
+            'clear_all_files': '清空文件'
+        }
+        return operation_names.get(operation, operation)
+    
     # 路由定义
     @app.route('/login', methods=['GET', 'POST'])
     def login():
@@ -80,6 +116,10 @@ def create_app(config_name=None):
                 session['authenticated'] = True
                 session['session_id'] = str(uuid.uuid4())
                 session.permanent = True
+                
+                # 记录登录日志
+                user_logger.log_login(session['session_id'])
+                
                 flash('登录成功，欢迎使用Excel/CSV汇总工具！', 'success')
                 return redirect(url_for('index'))
             else:
@@ -87,11 +127,44 @@ def create_app(config_name=None):
         
         return render_template('login.html')
     
+    @app.route('/admin/login', methods=['GET', 'POST'])
+    def admin_login():
+        """管理员登录"""
+        if request.method == 'POST':
+            password = request.form.get('password', '').strip()
+            
+            if password == app.config['ADMIN_PASSWORD']:
+                session['is_admin'] = True
+                session.permanent = True
+                flash('管理员登录成功！', 'success')
+                
+                # 如果有重定向目标，跳转到目标页面
+                next_page = request.args.get('next')
+                if next_page:
+                    return redirect(next_page)
+                return redirect(url_for('user_logs'))
+            else:
+                flash('管理员密码错误，请重新输入', 'error')
+        
+        return render_template('admin_login.html')
+    
     @app.route('/logout')
     def logout():
         """用户登出"""
+        session_id = session.get('session_id')
+        is_admin = session.get('is_admin', False)
+        
+        # 记录登出日志
+        if session_id:
+            user_logger.log_logout(session_id)
+        
         session.clear()
-        flash('您已安全退出', 'info')
+        
+        if is_admin:
+            flash('已退出管理员模式', 'info')
+        else:
+            flash('您已安全退出', 'info')
+            
         return redirect(url_for('login'))
     
     @app.route('/')
@@ -121,8 +194,22 @@ def create_app(config_name=None):
                     continue
                 
                 try:
+                    # 获取文件大小
+                    file.seek(0, 2)  # 移动到文件末尾
+                    file_size = file.tell()
+                    file.seek(0)  # 重置到开头
+                    
                     file_info = file_manager.save_uploaded_file(file, file.filename, session_id)
                     file_ids.append(file_info['file_id'])
+                    
+                    # 记录文件上传日志
+                    user_logger.log_file_upload(
+                        filename=file.filename,
+                        file_size=file_size,
+                        file_id=file_info['file_id'],
+                        session_id=session_id
+                    )
+                    
                     flash(f'文件 {file.filename} 上传成功', 'success')
                 except Exception as e:
                     flash(f'文件 {file.filename} 上传失败: {str(e)}', 'error')
@@ -183,6 +270,14 @@ def create_app(config_name=None):
                 }), 404
             
             preview_data = file_manager.preview_file(file_id, sheet_name, rows, header_row, session_id)
+            
+            # 记录文件预览日志
+            user_logger.log_file_preview(
+                filename=file_info.get('original_filename', 'unknown'),
+                file_id=file_id,
+                sheet_name=sheet_name,
+                session_id=session_id
+            )
             
             return jsonify({
                 'success': True,
@@ -445,6 +540,14 @@ def create_app(config_name=None):
                 'session_id': session_id
             })
             
+            # 记录任务提交日志
+            user_logger.log_merge_task_submit(
+                file_count=len(file_configs),
+                task_id=task_id,
+                export_format=export_options.get('format', 'xlsx'),
+                session_id=session_id
+            )
+            
             return jsonify({
                 'success': True,
                 'task_id': task_id
@@ -505,6 +608,12 @@ def create_app(config_name=None):
                 flash('请求的文件不存在或已被删除', 'error')
                 return redirect(url_for('index'))
             
+            # 记录文件下载日志
+            user_logger.log_file_download(
+                filename=filename,
+                session_id=session_id
+            )
+            
             return send_file(file_path, as_attachment=True, download_name=filename)
             
         except Exception as e:
@@ -518,7 +627,21 @@ def create_app(config_name=None):
         """删除文件API"""
         try:
             session_id = get_session_id()
+            
+            # 获取文件信息用于日志记录
+            file_info = file_manager.get_file_info(file_id, session_id)
+            filename = file_info.get('original_filename', 'unknown') if file_info else 'unknown'
+            
+            # 删除文件
             file_manager.delete_file(file_id, session_id)
+            
+            # 记录删除日志
+            user_logger.log_file_delete(
+                filename=filename,
+                file_id=file_id,
+                session_id=session_id
+            )
+            
             return jsonify({'success': True})
         except Exception as e:
             return jsonify({
@@ -532,7 +655,31 @@ def create_app(config_name=None):
         """清理所有文件API"""
         try:
             session_id = get_session_id()
+            logging.info(f"开始清理用户 {session_id} 的所有文件")
+            
+            # 获取文件数量用于日志记录
+            files = file_manager.get_file_list(session_id)
+            files_count = len(files)
+            logging.info(f"用户 {session_id} 有 {files_count} 个文件需要清理")
+            
+            # 如果没有文件，直接返回
+            if files_count == 0:
+                return jsonify({
+                    'success': True, 
+                    'message': '没有文件需要清理',
+                    'stats': {'files_deleted': 0, 'metadata_deleted': 0, 'errors': 0}
+                })
+            
+            # 执行清理
             stats = file_manager.clear_all_files(session_id)
+            logging.info(f"清理完成: {stats}")
+            
+            # 记录清空文件日志
+            user_logger.log_clear_all_files(
+                files_count=files_count,
+                session_id=session_id
+            )
+            
             return jsonify({
                 'success': True, 
                 'message': f'已清理 {stats["files_deleted"]} 个文件和 {stats["metadata_deleted"]} 个元数据记录',
@@ -554,6 +701,53 @@ def create_app(config_name=None):
                 'total_tasks': len(task_manager.tasks),
                 'uptime': str(datetime.now())
             }
+        })
+    
+    @app.route('/logs')
+    @login_required
+    @admin_required
+    def user_logs():
+        """用户日志查看页面（仅管理员）"""
+        session_id = get_session_id()
+        
+        # 获取查询参数
+        operation_filter = request.args.get('operation')
+        limit = min(int(request.args.get('limit', 50)), 200)  # 最多200条
+        
+        # 管理员可以查看所有用户的日志，不传session_id
+        logs = user_logger.get_user_logs(
+            session_id=None,  # 管理员查看所有日志
+            limit=limit,
+            operation_filter=operation_filter
+        )
+        
+        # 获取统计信息（所有用户）
+        stats = user_logger.get_operation_stats(session_id=None, days=7)
+        
+        return render_template('user_logs.html', logs=logs, stats=stats)
+    
+    @app.route('/api/user_logs')
+    @login_required
+    @admin_required
+    def api_user_logs():
+        """用户日志API（仅管理员）"""
+        session_id = get_session_id()
+        
+        # 获取查询参数
+        operation_filter = request.args.get('operation')
+        limit = min(int(request.args.get('limit', 50)), 200)
+        
+        # 管理员可以查看所有用户的日志
+        logs = user_logger.get_user_logs(
+            session_id=None,  # 管理员查看所有日志
+            limit=limit,
+            operation_filter=operation_filter
+        )
+        
+        return jsonify({
+            'success': True,
+            'logs': logs,
+            'total': len(logs)
         })
     
     # 错误处理
@@ -597,11 +791,13 @@ def setup_logging(app):
         app.logger.info('Excel汇总工具启动')
 
 def startup_cleanup(app, file_manager):
-    """应用启动时清理upload文件夹中的所有文件"""
+    """应用启动时清理过期的临时文件"""
     try:
-        app.logger.info("开始清理启动时的临时文件...")
+        app.logger.info("开始清理启动时的过期临时文件...")
         
-        # 清理所有用户的上传文件（不分session）
+        # 清理过期文件（1天前），而不是所有文件
+        retention_days = app.config.get('FILE_RETENTION_DAYS', 1)
+        
         upload_folder = app.config['UPLOAD_FOLDER']
         if not os.path.exists(upload_folder):
             app.logger.info("上传文件夹不存在，无需清理")
@@ -609,30 +805,39 @@ def startup_cleanup(app, file_manager):
         
         total_deleted = 0
         error_count = 0
+        cutoff_time = time.time() - (retention_days * 24 * 3600)
         
         # 遍历upload文件夹中的所有内容
         for item in os.listdir(upload_folder):
             item_path = os.path.join(upload_folder, item)
             
             try:
-                if os.path.isfile(item_path):
-                    # 删除文件
-                    os.remove(item_path)
-                    total_deleted += 1
-                elif os.path.isdir(item_path):
-                    # 删除用户文件夹及其内容
-                    import shutil
-                    shutil.rmtree(item_path)
-                    total_deleted += 1
-                    app.logger.info(f"删除用户文件夹: {item}")
+                # 检查文件/文件夹的修改时间
+                item_mtime = os.path.getmtime(item_path)
+                
+                if item_mtime < cutoff_time:
+                    if os.path.isfile(item_path):
+                        # 删除过期文件
+                        os.remove(item_path)
+                        total_deleted += 1
+                        app.logger.info(f"删除过期文件: {item}")
+                    elif os.path.isdir(item_path):
+                        # 删除过期用户文件夹及其内容
+                        import shutil
+                        shutil.rmtree(item_path)
+                        total_deleted += 1
+                        app.logger.info(f"删除过期用户文件夹: {item}")
+                else:
+                    app.logger.debug(f"保留未过期的文件/文件夹: {item}")
+                    
             except Exception as e:
                 error_count += 1
-                app.logger.error(f"删除启动文件失败 {item}: {e}")
+                app.logger.error(f"检查启动文件失败 {item}: {e}")
         
         if total_deleted > 0:
-            app.logger.info(f"启动清理完成 - 删除了 {total_deleted} 个文件/文件夹")
+            app.logger.info(f"启动清理完成 - 删除了 {total_deleted} 个过期文件/文件夹")
         else:
-            app.logger.info("启动时没有需要清理的文件")
+            app.logger.info("启动时没有过期文件需要清理")
             
         if error_count > 0:
             app.logger.warning(f"启动清理过程中遇到 {error_count} 个错误")

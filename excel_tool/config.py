@@ -11,7 +11,8 @@ class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'your-secret-key-here-change-in-production'
     
     # 用户认证配置
-    ACCESS_PASSWORD = os.environ.get('ACCESS_PASSWORD') or 'HKP888'
+    ACCESS_PASSWORD = os.environ.get('ACCESS_PASSWORD') or '123456'
+    ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD') or 'admin2025'  # 管理员密码
     SESSION_PERMANENT = False
     PERMANENT_SESSION_LIFETIME = timedelta(hours=24)  # 会话过期时间
     
