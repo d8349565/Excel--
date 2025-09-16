@@ -228,7 +228,18 @@ class FileManager:
                         sheet_name = file_info['sheets'][0]
                     else:
                         sheet_name = 0  # 使用索引访问第一个sheet
-                df = pd.read_excel(file_path, sheet_name=sheet_name, nrows=rows, header=header_row)
+                
+                # 使用上下文管理器确保文件句柄被正确关闭
+                try:
+                    df = pd.read_excel(file_path, sheet_name=sheet_name, nrows=rows, header=header_row, engine='openpyxl')
+                    # 强制垃圾回收以释放文件句柄
+                    import gc
+                    gc.collect()
+                except Exception as e:
+                    # 如果读取失败，确保进行垃圾回收
+                    import gc
+                    gc.collect()
+                    raise e
             else:
                 raise ValueError(f"不支持的文件类型: {extension}")
             
@@ -293,7 +304,19 @@ class FileManager:
                     sheet_name = file_info['sheets'][0]
                 else:
                     sheet_name = 0  # 使用索引访问第一个sheet
-            return pd.read_excel(file_path, sheet_name=sheet_name, header=header_row)
+            
+            # 读取Excel文件并确保句柄被正确释放
+            try:
+                df = pd.read_excel(file_path, sheet_name=sheet_name, header=header_row, engine='openpyxl')
+                # 强制垃圾回收以释放文件句柄
+                import gc
+                gc.collect()
+                return df
+            except Exception as e:
+                # 如果读取失败，确保进行垃圾回收
+                import gc
+                gc.collect()
+                raise e
         else:
             raise ValueError(f"不支持的文件类型: {extension}")
     
@@ -390,9 +413,27 @@ class FileManager:
         try:
             file_info = self.get_file_info(file_id, session_id)
             if file_info:
-                # 删除文件
-                if os.path.exists(file_info['file_path']):
-                    os.remove(file_info['file_path'])
+                file_path = file_info['file_path']
+                
+                # 尝试删除文件，如果失败则强制释放句柄
+                if os.path.exists(file_path):
+                    try:
+                        os.remove(file_path)
+                    except PermissionError as e:
+                        logging.warning(f"文件被占用，尝试强制删除: {file_path}")
+                        # 强制垃圾回收释放句柄
+                        import gc
+                        gc.collect()
+                        
+                        # 等待一小段时间再尝试
+                        import time
+                        time.sleep(0.1)
+                        
+                        try:
+                            os.remove(file_path)
+                        except PermissionError:
+                            # 如果仍然失败，记录错误但继续删除元数据
+                            logging.error(f"无法删除文件 {file_path}，文件可能被其他程序占用")
                 
                 # 删除元信息文件
                 if session_id:
@@ -408,6 +449,7 @@ class FileManager:
                 
         except Exception as e:
             logging.error(f"删除文件时出错: {e}")
+            raise  # 重新抛出异常以便上层处理
     
     def get_file_list(self, session_id: str = None) -> List[Dict]:
         """获取文件列表，如果提供session_id则只返回该用户的文件"""
@@ -416,20 +458,24 @@ class FileManager:
             if session_id:
                 # 获取用户专用文件夹中的文件
                 user_folder = self.get_user_upload_folder(session_id)
-                for filename in os.listdir(user_folder):
-                    if filename.endswith('_metadata.json'):
-                        file_id = filename.replace('_metadata.json', '')
-                        file_info = self.get_file_info(file_id, session_id)
-                        if file_info:
-                            files.append(file_info)
+                if os.path.exists(user_folder):
+                    for filename in os.listdir(user_folder):
+                        if filename.endswith('_metadata.json'):
+                            file_id = filename.replace('_metadata.json', '')
+                            file_info = self.get_file_info(file_id, session_id)
+                            if file_info:
+                                files.append(file_info)
+                else:
+                    logging.info(f"用户文件夹不存在: {user_folder}")
             else:
                 # 获取所有文件（向后兼容）
-                for filename in os.listdir(self.upload_folder):
-                    if filename.endswith('_metadata.json'):
-                        file_id = filename.replace('_metadata.json', '')
-                        file_info = self.get_file_info(file_id)
-                        if file_info:
-                            files.append(file_info)
+                if os.path.exists(self.upload_folder):
+                    for filename in os.listdir(self.upload_folder):
+                        if filename.endswith('_metadata.json'):
+                            file_id = filename.replace('_metadata.json', '')
+                            file_info = self.get_file_info(file_id)
+                            if file_info:
+                                files.append(file_info)
         except Exception as e:
             logging.error(f"获取文件列表时出错: {e}")
         
@@ -524,6 +570,82 @@ class FileManager:
             
         except Exception as e:
             logging.error(f"自动清理过期文件时出错: {e}")
+            stats['errors'] += 1
+            
+        return stats
+    
+    def clear_all_files(self, session_id: str) -> Dict[str, int]:
+        """清理指定用户的所有文件
+        
+        Args:
+            session_id: 用户会话ID
+            
+        Returns:
+            清理统计信息
+        """
+        stats = {'files_deleted': 0, 'metadata_deleted': 0, 'errors': 0}
+        
+        try:
+            user_folder = self.get_user_upload_folder(session_id)
+            
+            if not os.path.exists(user_folder):
+                logging.info(f"用户文件夹不存在: {user_folder}")
+                return stats
+            
+            # 删除用户文件夹中的所有文件
+            for filename in os.listdir(user_folder):
+                file_path = os.path.join(user_folder, filename)
+                
+                try:
+                    if os.path.isfile(file_path):
+                        os.remove(file_path)
+                        if filename.endswith('_metadata.json'):
+                            stats['metadata_deleted'] += 1
+                            logging.info(f"删除元数据文件: {filename}")
+                        else:
+                            stats['files_deleted'] += 1
+                            logging.info(f"删除文件: {filename}")
+                            
+                except Exception as e:
+                    logging.error(f"删除文件失败 {filename}: {e}")
+                    stats['errors'] += 1
+            
+            # 如果文件夹为空，删除文件夹
+            try:
+                if not os.listdir(user_folder):
+                    os.rmdir(user_folder)
+                    logging.info(f"删除空的用户文件夹: {user_folder}")
+            except Exception as e:
+                logging.error(f"删除用户文件夹失败: {e}")
+                stats['errors'] += 1
+            
+            # 清理用户的结果文件
+            user_results_folder = self.get_user_results_folder(session_id)
+            if os.path.exists(user_results_folder):
+                try:
+                    for filename in os.listdir(user_results_folder):
+                        file_path = os.path.join(user_results_folder, filename)
+                        if os.path.isfile(file_path):
+                            os.remove(file_path)
+                            stats['files_deleted'] += 1
+                            logging.info(f"删除结果文件: {filename}")
+                    
+                    # 如果结果文件夹为空，删除文件夹
+                    if not os.listdir(user_results_folder):
+                        os.rmdir(user_results_folder)
+                        logging.info(f"删除空的用户结果文件夹: {user_results_folder}")
+                        
+                except Exception as e:
+                    logging.error(f"清理用户结果文件夹失败: {e}")
+                    stats['errors'] += 1
+            
+            if stats['files_deleted'] > 0 or stats['metadata_deleted'] > 0:
+                logging.info(f"用户文件清理完成 - 文件: {stats['files_deleted']}, 元数据: {stats['metadata_deleted']}, 错误: {stats['errors']}")
+            else:
+                logging.info("没有文件需要清理")
+            
+        except Exception as e:
+            logging.error(f"清理用户文件时出错: {e}")
             stats['errors'] += 1
             
         return stats
