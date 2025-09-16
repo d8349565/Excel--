@@ -63,6 +63,9 @@ def create_app(config_name=None):
     # 启动清理线程
     start_cleanup_thread(app, file_manager)
     
+    # 应用启动时清理upload文件夹
+    startup_cleanup(app, file_manager)
+    
     # 注册关闭处理
     atexit.register(lambda: task_manager.stop())
     
@@ -592,6 +595,50 @@ def setup_logging(app):
         
         app.logger.setLevel(logging.INFO)
         app.logger.info('Excel汇总工具启动')
+
+def startup_cleanup(app, file_manager):
+    """应用启动时清理upload文件夹中的所有文件"""
+    try:
+        app.logger.info("开始清理启动时的临时文件...")
+        
+        # 清理所有用户的上传文件（不分session）
+        upload_folder = app.config['UPLOAD_FOLDER']
+        if not os.path.exists(upload_folder):
+            app.logger.info("上传文件夹不存在，无需清理")
+            return
+        
+        total_deleted = 0
+        error_count = 0
+        
+        # 遍历upload文件夹中的所有内容
+        for item in os.listdir(upload_folder):
+            item_path = os.path.join(upload_folder, item)
+            
+            try:
+                if os.path.isfile(item_path):
+                    # 删除文件
+                    os.remove(item_path)
+                    total_deleted += 1
+                elif os.path.isdir(item_path):
+                    # 删除用户文件夹及其内容
+                    import shutil
+                    shutil.rmtree(item_path)
+                    total_deleted += 1
+                    app.logger.info(f"删除用户文件夹: {item}")
+            except Exception as e:
+                error_count += 1
+                app.logger.error(f"删除启动文件失败 {item}: {e}")
+        
+        if total_deleted > 0:
+            app.logger.info(f"启动清理完成 - 删除了 {total_deleted} 个文件/文件夹")
+        else:
+            app.logger.info("启动时没有需要清理的文件")
+            
+        if error_count > 0:
+            app.logger.warning(f"启动清理过程中遇到 {error_count} 个错误")
+            
+    except Exception as e:
+        app.logger.error(f"启动清理失败: {e}")
 
 def start_cleanup_thread(app, file_manager):
     """启动文件清理线程"""
