@@ -64,8 +64,14 @@ class FileManager:
     
     def allowed_file(self, filename: str) -> bool:
         """检查文件扩展名是否被允许"""
-        return '.' in filename and \
-               filename.rsplit('.', 1)[1].lower() in self.allowed_extensions
+        if '.' not in filename:
+            return False
+        
+        try:
+            extension = filename.rsplit('.', 1)[1].lower()
+            return extension in self.allowed_extensions
+        except IndexError:
+            return False
     
     def get_file_size(self, file) -> int:
         """获取文件大小"""
@@ -99,7 +105,17 @@ class FileManager:
             # 生成唯一文件ID和安全文件名
             file_id = str(uuid.uuid4())
             safe_filename = secure_filename(original_filename)
-            extension = safe_filename.rsplit('.', 1)[1].lower()
+            
+            # 安全获取文件扩展名
+            if '.' in safe_filename:
+                extension = safe_filename.rsplit('.', 1)[1].lower()
+            else:
+                # 如果安全文件名没有扩展名，从原文件名获取
+                if '.' in original_filename:
+                    extension = original_filename.rsplit('.', 1)[1].lower()
+                else:
+                    raise ValueError(f"无法确定文件扩展名: {original_filename}")
+            
             saved_filename = f"{file_id}.{extension}"
             
             # 根据是否有session_id决定保存位置
@@ -128,8 +144,12 @@ class FileManager:
             # 如果是Excel文件，获取sheet列表
             if extension in ['xlsx', 'xls']:
                 try:
-                    sheets = pd.ExcelFile(file_path).sheet_names
-                    file_info['sheets'] = sheets
+                    excel_file = pd.ExcelFile(file_path)
+                    sheets = excel_file.sheet_names
+                    if sheets:  # 确保sheet列表不为空
+                        file_info['sheets'] = sheets
+                    else:
+                        file_info['sheets'] = ['Sheet1']  # 空Excel文件默认sheet名
                 except Exception as e:
                     logging.warning(f"无法读取Excel文件的sheet信息: {e}")
                     file_info['sheets'] = ['Sheet1']  # 默认sheet名
@@ -203,7 +223,11 @@ class FileManager:
                 df = self._read_csv_with_encoding_detection(file_path, nrows=rows, header=header_row)
             elif extension in ['xlsx', 'xls']:
                 if not sheet_name:
-                    sheet_name = file_info['sheets'][0] if file_info['sheets'] else 0
+                    # 确保安全访问sheets列表
+                    if file_info['sheets'] and len(file_info['sheets']) > 0:
+                        sheet_name = file_info['sheets'][0]
+                    else:
+                        sheet_name = 0  # 使用索引访问第一个sheet
                 df = pd.read_excel(file_path, sheet_name=sheet_name, nrows=rows, header=header_row)
             else:
                 raise ValueError(f"不支持的文件类型: {extension}")
@@ -264,7 +288,11 @@ class FileManager:
             return self._read_csv_with_encoding_detection(file_path, header=header_row)
         elif extension in ['xlsx', 'xls']:
             if not sheet_name:
-                sheet_name = file_info['sheets'][0] if file_info['sheets'] else 0
+                # 确保安全访问sheets列表
+                if file_info['sheets'] and len(file_info['sheets']) > 0:
+                    sheet_name = file_info['sheets'][0]
+                else:
+                    sheet_name = 0  # 使用索引访问第一个sheet
             return pd.read_excel(file_path, sheet_name=sheet_name, header=header_row)
         else:
             raise ValueError(f"不支持的文件类型: {extension}")
