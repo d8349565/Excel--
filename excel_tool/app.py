@@ -1,7 +1,7 @@
 from flask import Flask, request, render_template, redirect, url_for, jsonify, send_file, flash, session
 import os
 import logging
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from werkzeug.utils import secure_filename
 import atexit
 import threading
@@ -693,13 +693,17 @@ def create_app(config_name=None):
     @login_required
     def system_status():
         """系统状态API"""
+        # 使用北京时区显示时间
+        beijing_tz = timezone(timedelta(hours=8))
+        current_time = datetime.now(beijing_tz).strftime('%Y-%m-%d %H:%M:%S %Z')
+        
         return jsonify({
             'success': True,
             'status': {
                 'queue_size': task_manager.get_queue_size(),
                 'running_tasks': task_manager.get_running_tasks(),
                 'total_tasks': len(task_manager.tasks),
-                'uptime': str(datetime.now())
+                'uptime': current_time
             }
         })
     
@@ -779,10 +783,14 @@ def setup_logging(app):
         
         log_file = os.path.join(app.config['LOGS_FOLDER'], 'app.log')
         
+        # 设置北京时区
+        beijing_tz = timezone(timedelta(hours=8))
+        
         # 设置文件日志
         file_handler = logging.FileHandler(log_file, encoding='utf-8')
         file_handler.setFormatter(logging.Formatter(
-            '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
+            '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]',
+            datefmt='%Y-%m-%d %H:%M:%S'
         ))
         file_handler.setLevel(logging.INFO)
         app.logger.addHandler(file_handler)

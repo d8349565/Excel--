@@ -7,7 +7,7 @@
 import os
 import logging
 import json
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional
 from functools import wraps
 from flask import session, request
@@ -18,6 +18,9 @@ class UserLogger:
     def __init__(self, app_config: dict):
         self.logs_folder = app_config.get('LOGS_FOLDER', 'logs')
         self.user_log_file = os.path.join(self.logs_folder, 'user_operations.log')
+        
+        # 设置北京时区
+        self.beijing_tz = timezone(timedelta(hours=8))
         
         # 确保日志文件夹存在
         if not os.path.exists(self.logs_folder):
@@ -55,7 +58,7 @@ class UserLogger:
                 'client_ip': client_ip,
                 'user_agent': user_agent[:100],  # 限制长度
                 'details': details or {},
-                'timestamp': datetime.now().isoformat()
+                'timestamp': datetime.now(self.beijing_tz).isoformat()
             }
             
             # 记录到日志文件
