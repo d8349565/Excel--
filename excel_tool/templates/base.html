@@ -49,6 +49,12 @@
                                     <i class="bi bi-info-circle"></i> 系统状态
                                 </a>
                             </li>
+                            <li>
+                                <a class="dropdown-item" href="{{ url_for('admin_login') }}" 
+                                   title="查看操作日志（管理员）">
+                                    <i class="bi bi-journal-text"></i> 操作日志
+                                </a>
+                            </li>
                             <li><hr class="dropdown-divider"></li>
                             <li>
                                 <a class="dropdown-item text-danger" href="{{ url_for('logout') }}">

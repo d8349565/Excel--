@@ -22,7 +22,7 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
-
+.qoder
 # Virtual Environment
 venv/
 env/

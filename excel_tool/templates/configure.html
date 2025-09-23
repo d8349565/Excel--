@@ -25,6 +25,93 @@
     outline: 2px solid #0d6efd;
     outline-offset: 2px;
 }
+
+/* 拖拽排序样式 */
+.column-config-table {
+    position: relative;
+}
+
+.column-config-table tbody tr {
+    transition: background-color 0.2s ease;
+    /* 移除所有其他过渡效果以提高性能 */
+}
+
+.column-config-table tbody tr.drag-over {
+    background-color: #e3f2fd !important;
+    border: 2px dashed #2196f3 !important;
+}
+
+.column-config-table tbody tr.dragging {
+    opacity: 0.6;
+    transform: scale(0.98);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    z-index: 1000;
+    position: relative;
+    transition: none; /* 禁用过渡动画以提高性能 */
+}
+
+.drag-handle {
+    cursor: move;
+    user-select: none;
+}
+
+.drag-handle:hover {
+    background-color: #f8f9fa;
+    border-radius: 4px;
+}
+
+.drag-placeholder {
+    background-color: transparent !important;
+    border: none !important;
+    height: 3px !important;
+    padding: 0 !important;
+}
+
+.drag-placeholder td {
+    padding: 0 !important;
+    border: none !important;
+    background: linear-gradient(90deg, #007bff, #0056b3) !important;
+    border-radius: 2px;
+    height: 3px !important;
+    opacity: 0.8;
+    animation: pulse 1s ease-in-out infinite alternate;
+}
+
+@keyframes pulse {
+    from { opacity: 0.6; }
+    to { opacity: 1; }
+}
+
+/* 拖拽时的视觉反馈 */
+.column-config-table tbody tr:hover {
+    background-color: #f8f9fa;
+}
+
+.column-config-table tbody tr.drag-target {
+    border-top: 3px solid #007bff !important;
+}
+
+.drag-handle i {
+    transition: color 0.2s ease;
+}
+
+.drag-handle:hover i {
+    color: #007bff;
+}
+
+/* 性能优化 */
+.column-config-table {
+    transform: translateZ(0); /* 启用硬件加速 */
+    will-change: auto;
+}
+
+.column-config-table tbody tr.dragging {
+    will-change: transform, opacity; /* 仅在拖拽时启用 */
+}
+
+.column-config-table tbody tr:not(.dragging) {
+    will-change: auto; /* 非拖拽状态下关闭 */
+}
 </style>
 {% endblock %}
 
@@ -228,7 +315,7 @@
                                     
                                     <div id="columnConfigContainer">
                                         <div class="table-responsive">
-                                            <table class="table table-sm" id="columnConfigTable">
+                                            <table class="table table-sm column-config-table" id="columnConfigTable">
                                                 <thead>
                                                     <tr>
                                                         <th width="40">顺序</th>
@@ -1196,18 +1283,13 @@ function addColumnConfigRow(originalName = '', displayName = '', columnType = 'a
             <div class="d-flex align-items-center">
                 <input type="number" class="form-control form-control-sm column-order" 
                        value="${order}" min="1" style="width: 60px;" onchange="updateColumnOrder()">
-                <div class="btn-group-vertical ms-1" style="height: 32px;">
-                    <button type="button" class="btn btn-outline-secondary btn-sm py-0" style="height: 16px; font-size: 10px;" onclick="moveColumnUp(this)" title="上移">
-                        <i class="bi bi-chevron-up"></i>
-                    </button>
-                    <button type="button" class="btn btn-outline-secondary btn-sm py-0" style="height: 16px; font-size: 10px;" onclick="moveColumnDown(this)" title="下移">
-                        <i class="bi bi-chevron-down"></i>
-                    </button>
+                <div class="ms-2 drag-handle" style="cursor: move; padding: 4px;" title="拖拽排序">
+                    <i class="bi bi-grip-vertical text-muted"></i>
                 </div>
             </div>
         </td>
         <td>
-            <input type="checkbox" class="form-check-input column-visible" ${isVisible ? 'checked' : ''}>
+            <input type="checkbox" class="form-check-input column-visible" ${isVisible ? 'checked' : ''} onchange="toggleColumnVisibility(this)">
         </td>
         <td>
             <input type="text" class="form-control form-control-sm original-column-name" 
@@ -1231,34 +1313,93 @@ function addColumnConfigRow(originalName = '', displayName = '', columnType = 'a
                 <i class="bi bi-trash"></i>
             </button>
         </td>
-    `;
-    
+    `;    
     tbody.appendChild(row);
-}
-
-// 删除列配置行
-function removeColumnConfigRow(button) {
-    button.closest('tr').remove();
-    updateColumnOrder();
-}
-
-// 上移列
-function moveColumnUp(button) {
-    const row = button.closest('tr');
-    const prevRow = row.previousElementSibling;
-    if (prevRow) {
-        row.parentNode.insertBefore(row, prevRow);
-        updateColumnOrder();
+    
+    // 如果列不可见，应用视觉样式
+    if (!isVisible) {
+        toggleColumnVisibility(row.querySelector('.column-visible'));
     }
 }
 
-// 下移列
-function moveColumnDown(button) {
+// 删除列配置行（直接隐藏）
+function removeColumnConfigRow(button) {
     const row = button.closest('tr');
-    const nextRow = row.nextElementSibling;
-    if (nextRow) {
-        row.parentNode.insertBefore(nextRow, row);
-        updateColumnOrder();
+    const visibilityCheckbox = row.querySelector('.column-visible');
+    
+    // 直接隐藏列（不显示提示）
+    visibilityCheckbox.checked = false;
+    
+    // 添加视觉提示表示该列已隐藏
+    row.style.opacity = '0.5';
+    row.style.backgroundColor = '#f8f9fa';
+    row.title = '此列已隐藏，不会在最终结果中显示';
+    
+    // 更新按钮文本和颜色
+    const deleteBtn = row.querySelector('.btn-outline-danger');
+    if (deleteBtn) {
+        deleteBtn.className = 'btn btn-outline-success btn-sm';
+        deleteBtn.innerHTML = '<i class="bi bi-eye"></i>';
+        deleteBtn.title = '点击显示此列';
+        deleteBtn.onclick = function() { showColumnConfigRow(this); };
+    }
+}
+
+// 显示列配置行（恢复隐藏的列）
+function showColumnConfigRow(button) {
+    const row = button.closest('tr');
+    const visibilityCheckbox = row.querySelector('.column-visible');
+    
+    // 恢复可见性
+    visibilityCheckbox.checked = true;
+    
+    // 恢复视觉样式
+    row.style.opacity = '1';
+    row.style.backgroundColor = '';
+    row.title = '';
+    
+    // 恢复按钮
+    const showBtn = row.querySelector('.btn-outline-success');
+    if (showBtn) {
+        showBtn.className = 'btn btn-outline-danger btn-sm';
+        showBtn.innerHTML = '<i class="bi bi-trash"></i>';
+        showBtn.title = '删除/隐藏此列';
+        showBtn.onclick = function() { removeColumnConfigRow(this); };
+    }
+}
+
+// 切换列可见性
+function toggleColumnVisibility(checkbox) {
+    const row = checkbox.closest('tr');
+    const columnName = row.querySelector('.original-column-name').value || row.querySelector('.display-column-name').value || '未命名列';
+    const deleteBtn = row.querySelector('.btn-outline-danger, .btn-outline-success');
+    
+    if (checkbox.checked) {
+        // 显示列
+        row.style.opacity = '1';
+        row.style.backgroundColor = '';
+        row.title = '';
+        
+        // 恢复删除按钮
+        if (deleteBtn) {
+            deleteBtn.className = 'btn btn-outline-danger btn-sm';
+            deleteBtn.innerHTML = '<i class="bi bi-trash"></i>';
+            deleteBtn.title = '删除/隐藏此列';
+            deleteBtn.onclick = function() { removeColumnConfigRow(this); };
+        }
+    } else {
+        // 隐藏列
+        row.style.opacity = '0.5';
+        row.style.backgroundColor = '#f8f9fa';
+        row.title = '此列已隐藏，不会在最终结果中显示';
+        
+        // 更改为显示按钮
+        if (deleteBtn) {
+            deleteBtn.className = 'btn btn-outline-success btn-sm';
+            deleteBtn.innerHTML = '<i class="bi bi-eye"></i>';
+            deleteBtn.title = '点击显示此列';
+            deleteBtn.onclick = function() { showColumnConfigRow(this); };
+        }
     }
 }
 
@@ -1288,7 +1429,254 @@ function resetColumnOrder() {
 
 // 启用列拖拽排序
 function enableColumnSorting() {
-    // 这里可以集成拖拽库，暂时使用按钮排序
+    const tbody = document.getElementById('columnConfigBody');
+    if (!tbody) return;
+    
+    // 为每个表格行添加拖拽功能
+    tbody.querySelectorAll('tr').forEach(addDragToRow);
+    
+    // 监听新添加的行
+    const observer = new MutationObserver(function(mutations) {
+        mutations.forEach(function(mutation) {
+            mutation.addedNodes.forEach(function(node) {
+                if (node.nodeType === 1 && node.tagName === 'TR') {
+                    addDragToRow(node);
+                }
+            });
+        });
+    });
+    
+    observer.observe(tbody, { childList: true });
+    
+    // 添加表格级别的拖拽处理
+    tbody.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+    });
+    
+    tbody.addEventListener('drop', function(e) {
+        e.preventDefault();
+        // 确保顺序更新
+        setTimeout(() => {
+            updateColumnOrder();
+        }, 10);
+    });
+}
+
+// 节流函数
+function throttle(func, delay) {
+    let timeoutId;
+    let lastExecTime = 0;
+    return function (...args) {
+        const currentTime = Date.now();
+        
+        if (currentTime - lastExecTime > delay) {
+            func.apply(this, args);
+            lastExecTime = currentTime;
+        } else {
+            clearTimeout(timeoutId);
+            timeoutId = setTimeout(() => {
+                func.apply(this, args);
+                lastExecTime = Date.now();
+            }, delay - (currentTime - lastExecTime));
+        }
+    };
+}
+
+// 为单个行添加拖拽功能
+function addDragToRow(row) {
+    // 设置行为可拖拽
+    row.draggable = true;
+    
+    let placeholder = null;
+    
+    // 拖拽开始事件
+    row.addEventListener('dragstart', function(e) {
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/html', '');
+        
+        // 添加拖拽样式
+        row.classList.add('dragging');
+        
+        // 创建占位符
+        placeholder = document.createElement('tr');
+        placeholder.className = 'drag-placeholder';
+        placeholder.innerHTML = '<td colspan="6" style="height: 3px; background: linear-gradient(90deg, #007bff, #0056b3); border: none; padding: 0; border-radius: 2px;"></td>';
+    });
+    
+    // 拖拽结束事件
+    row.addEventListener('dragend', function(e) {
+        row.classList.remove('dragging');
+        
+        // 移除占位符
+        if (placeholder && placeholder.parentNode) {
+            placeholder.parentNode.removeChild(placeholder);
+        }
+        
+        // 清除所有拖拽目标样式
+        document.querySelectorAll('.drag-target').forEach(el => {
+            el.classList.remove('drag-target');
+        });
+        
+        placeholder = null;
+    });
+    
+    // 拖拽经过事件
+    row.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        
+        const draggingRow = document.querySelector('.dragging');
+        if (!draggingRow || draggingRow === row || !placeholder) {
+            return;
+        }
+        
+        const tbody = row.parentNode;
+        
+        // 移除之前的占位符
+        if (placeholder.parentNode) {
+            placeholder.parentNode.removeChild(placeholder);
+        }
+        
+        // 计算鼠标相对于目标行的位置
+        const rect = row.getBoundingClientRect();
+        const midpoint = rect.top + rect.height / 2;
+        
+        if (e.clientY < midpoint) {
+            // 插入到目标行之前
+            tbody.insertBefore(placeholder, row);
+        } else {
+            // 插入到目标行之后
+            const nextSibling = row.nextElementSibling;
+            if (nextSibling) {
+                tbody.insertBefore(placeholder, nextSibling);
+            } else {
+                tbody.appendChild(placeholder);
+            }
+        }
+    });
+    
+    // 拖拽进入事件
+    row.addEventListener('dragenter', function(e) {
+        e.preventDefault();
+        if (!row.classList.contains('dragging')) {
+            row.classList.add('drag-target');
+        }
+    });
+    
+    // 拖拽离开事件  
+    row.addEventListener('dragleave', function(e) {
+        if (!row.contains(e.relatedTarget)) {
+            row.classList.remove('drag-target');
+        }
+    });
+    
+    // 拖拽放置事件
+    row.addEventListener('drop', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        const draggingRow = document.querySelector('.dragging');
+        if (!draggingRow || draggingRow === row) {
+            return;
+        }
+        
+        row.classList.remove('drag-target');
+        
+        // 计算鼠标相对于目标行的位置
+        const tbody = row.parentNode;
+        const rect = row.getBoundingClientRect();
+        const midpoint = rect.top + rect.height / 2;
+        
+        // 获取原始位置用于调试
+        const allRows = Array.from(tbody.children);
+        const originalDragIndex = allRows.indexOf(draggingRow);
+        const targetRowIndex = allRows.indexOf(row);
+        
+        // 执行插入操作
+        if (e.clientY < midpoint) {
+            // 插入到目标行之前
+            tbody.insertBefore(draggingRow, row);
+            console.log(`向上拖拽: 从第${originalDragIndex + 1}行移动到第${targetRowIndex + 1}行之前`);
+        } else {
+            // 插入到目标行之后
+            const nextSibling = row.nextElementSibling;
+            if (nextSibling) {
+                tbody.insertBefore(draggingRow, nextSibling);
+                console.log(`向下拖拽: 从第${originalDragIndex + 1}行移动到第${targetRowIndex + 1}行之后`);
+            } else {
+                tbody.appendChild(draggingRow);
+                console.log(`移动到最后: 从第${originalDragIndex + 1}行移动到最后一位`);
+            }
+        }
+        
+        // 更新顺序号并显示提示
+        updateColumnOrder();
+        showToast('列顺序已更新', 'success');
+        
+        // 输出移动后的位置
+        const newRows = Array.from(tbody.children);
+        const newDragIndex = newRows.indexOf(draggingRow);
+        console.log(`移动结果: 现在在第${newDragIndex + 1}行`);
+    });
+}
+
+// 显示Toast提示
+function showToast(message, type = 'info') {
+    // 创建Toast容器（如果不存在）
+    let toastContainer = document.getElementById('toast-container');
+    if (!toastContainer) {
+        toastContainer = document.createElement('div');
+        toastContainer.id = 'toast-container';
+        toastContainer.className = 'toast-container position-fixed top-0 end-0 p-3';
+        toastContainer.style.zIndex = '9999';
+        document.body.appendChild(toastContainer);
+    }
+    
+    // 创建Toast元素
+    const toastId = 'toast-' + Date.now();
+    const toastHtml = `
+        <div id="${toastId}" class="toast align-items-center text-white bg-${type === 'success' ? 'success' : 'primary'} border-0" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="d-flex">
+                <div class="toast-body">
+                    ${message}
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+        </div>
+    `;
+    
+    toastContainer.insertAdjacentHTML('beforeend', toastHtml);
+    
+    // 显示Toast
+    const toastElement = document.getElementById(toastId);
+    const toast = new bootstrap.Toast(toastElement, {
+        autohide: true,
+        delay: 2000
+    });
+    
+    toast.show();
+    
+    // Toast隐藏后删除元素
+    toastElement.addEventListener('hidden.bs.toast', function() {
+        toastElement.remove();
+    });
+}
+
+// 获取拖拽位置的下一个元素（保留以备用）
+function getDragAfterElement(container, y) {
+    const draggableElements = [...container.querySelectorAll('tr:not(.dragging)')];
+    
+    return draggableElements.reduce((closest, child) => {
+        const box = child.getBoundingClientRect();
+        const offset = y - box.top - box.height / 2;
+        
+        if (offset < 0 && offset > closest.offset) {
+            return { offset: offset, element: child };
+        } else {
+            return closest;
+        }
+    }, { offset: Number.NEGATIVE_INFINITY }).element;
 }
 
 // ================ 统一配置功能 ================

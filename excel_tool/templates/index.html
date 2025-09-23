@@ -190,7 +190,7 @@
                     <div class="mb-3">
                         <label for="files" class="form-label">或选择文件</label>
                         <input type="file" class="form-control" id="files" name="files" multiple 
-                               accept=".xlsx,.xls,.csv" webkitdirectory="false">
+                               accept=".xlsx,.xls,.csv">
                         <div class="form-text">
                             支持格式：.xlsx, .xls, .csv | 单文件最大 10MB | 总大小限制 100MB
                         </div>
@@ -246,10 +246,6 @@
                     <i class="bi bi-files"></i> 已上传文件 ({{ files|length }})
                 </h5>
                 <div>
-                    <a href="{{ url_for('admin_login') }}" class="btn btn-outline-info btn-sm me-2" 
-                       title="查看操作日志（管理员）">
-                        <i class="bi bi-journal-text"></i> 操作日志
-                    </a>
                     <button class="btn btn-danger btn-sm me-2" onclick="clearAllFiles()" 
                             title="清理所有文件" id="clearAllBtn">
                         <i class="bi bi-trash3"></i> 清理所有
