@@ -2,6 +2,32 @@
 
 {% block title %}配置合并 - Excel/CSV 汇总工具{% endblock %}
 
+{% block extra_css %}
+<style>
+/* 模态框无障碍性改进 */
+.modal.fade {
+    transition: opacity 0.15s linear;
+}
+
+.modal.fade .modal-dialog {
+    transition: transform 0.15s ease-out;
+}
+
+/* 确保模态框关闭时正确处理焦点 */
+.modal[aria-hidden="true"] button:focus,
+.modal[aria-hidden="true"] [tabindex]:focus {
+    outline: none !important;
+    box-shadow: none !important;
+}
+
+/* 改善按钮焦点状态 */
+.btn:focus {
+    outline: 2px solid #0d6efd;
+    outline-offset: 2px;
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="row">
     <div class="col-12">
@@ -1523,7 +1549,13 @@ function doExportConfig() {
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
         
-        alert('配置文件已导出');
+        // 移除模态框内所有按钮的焦点
+        const modal = document.getElementById('configManagerModal');
+        modal.querySelectorAll('button').forEach(btn => btn.blur());
+        
+        setTimeout(() => {
+            alert('配置文件已导出');
+        }, 100);
     } catch (error) {
         alert('导出配置失败：' + error.message);
     }
@@ -1549,7 +1581,21 @@ function doImportConfig() {
         try {
             const config = JSON.parse(e.target.result);
             applyImportedConfig(config);
-            alert('配置已成功导入');
+            
+            // 移除模态框内所有按钮的焦点
+            const modal = document.getElementById('configManagerModal');
+            modal.querySelectorAll('button').forEach(btn => btn.blur());
+            
+            // 关闭模态框
+            const modalInstance = bootstrap.Modal.getInstance(modal);
+            if (modalInstance) {
+                modalInstance.hide();
+            }
+            
+            // 延迟显示成功消息
+            setTimeout(() => {
+                alert('配置已成功导入');
+            }, 300);
         } catch (error) {
             alert('配置文件格式错误：' + error.message);
         }
@@ -1769,13 +1815,21 @@ function applyCachedConfig() {
         
         if (confirm(`确定要应用配置 "${configName}" 吗？这将覆盖当前所有设置。`)) {
             applyImportedConfig(config);
-            alert('配置已成功应用');
+            
+            // 首先移除模态框内所有按钮的焦点
+            const modal = document.getElementById('configManagerModal');
+            modal.querySelectorAll('button').forEach(btn => btn.blur());
             
             // 关闭模态框
-            const modal = bootstrap.Modal.getInstance(document.getElementById('configManagerModal'));
-            if (modal) {
-                modal.hide();
+            const modalInstance = bootstrap.Modal.getInstance(modal);
+            if (modalInstance) {
+                modalInstance.hide();
             }
+            
+            // 延迟显示成功消息，确保模态框完全关闭
+            setTimeout(() => {
+                alert('配置已成功应用');
+            }, 300);
         }
         
     } catch (error) {
@@ -1858,6 +1912,22 @@ function initConfigCache() {
 // 页面加载完成后初始化缓存功能
 document.addEventListener('DOMContentLoaded', function() {
     setTimeout(initConfigCache, 500); // 延迟初始化，确保所有元素都已加载
+    
+    // 为所有模态框添加通用的焦点管理
+    const modals = ['configManagerModal', 'previewModal', 'columnTypesModal', 'unifiedConfigModal'];
+    modals.forEach(modalId => {
+        const modalElement = document.getElementById(modalId);
+        if (modalElement) {
+            modalElement.addEventListener('hidden.bs.modal', function () {
+                // 模态框关闭时移除所有按钮的焦点
+                modalElement.querySelectorAll('button, [data-bs-dismiss]').forEach(element => {
+                    element.blur();
+                });
+                // 将焦点返回到主页面
+                document.body.focus();
+            });
+        }
+    });
 });
 </script>
 {% endblock %}
