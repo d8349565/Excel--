@@ -231,29 +231,78 @@ class FileManager:
                 
                 # 使用上下文管理器确保文件句柄被正确关闭
                 try:
-                    df = pd.read_excel(file_path, sheet_name=sheet_name, nrows=rows, header=header_row, engine='openpyxl')
+                    # 读取Excel文件时强制所有数据为字符串类型，避免类型比较问题
+                    df = pd.read_excel(
+                        file_path, 
+                        sheet_name=sheet_name, 
+                        nrows=rows, 
+                        header=header_row, 
+                        engine='openpyxl',
+                        dtype=str,  # 强制所有列为字符串类型
+                        na_filter=False  # 不将空值转换为NaN
+                    )
                     # 强制垃圾回收以释放文件句柄
                     import gc
                     gc.collect()
                 except Exception as e:
-                    # 如果读取失败，确保进行垃圾回收
-                    import gc
-                    gc.collect()
-                    raise e
+                    # 如果上面的方法失败，尝试不指定dtype
+                    try:
+                        df = pd.read_excel(file_path, sheet_name=sheet_name, nrows=rows, header=header_row, engine='openpyxl')
+                        # 强制垃圾回收以释放文件句柄
+                        import gc
+                        gc.collect()
+                    except Exception as e2:
+                        # 如果读取失败，确保进行垃圾回收
+                        import gc
+                        gc.collect()
+                        raise e2
             else:
                 raise ValueError(f"不支持的文件类型: {extension}")
             
             # 准备预览数据
-            preview_data = {
-                'file_id': file_id,
-                'filename': file_info['original_filename'],
-                'sheet_name': sheet_name,
-                'total_rows': len(df),
-                'total_columns': len(df.columns),
-                'columns': df.columns.tolist(),
-                'data': df.fillna('').astype(str).to_dict('records'),
-                'dtypes': df.dtypes.astype(str).to_dict()
-            }
+            # 确保DataFrame安全处理，避免类型比较问题
+            try:
+                # 安全处理列名，确保它们是字符串
+                column_names = [str(col) for col in df.columns]
+                df.columns = column_names
+                
+                # 创建副本并安全转换数据
+                df_safe = df.copy()
+                
+                # 安全地将所有数据转换为字符串
+                for col in df_safe.columns:
+                    try:
+                        df_safe[col] = df_safe[col].astype(str).replace('nan', '').replace('None', '')
+                    except Exception as e:
+                        logging.warning(f"转换列 {col} 时出错: {e}")
+                        # 如果转换失败，手动处理每个值
+                        df_safe[col] = df_safe[col].apply(lambda x: str(x) if pd.notna(x) else '')
+                
+                preview_data = {
+                    'file_id': file_id,
+                    'filename': file_info['original_filename'],
+                    'sheet_name': sheet_name,
+                    'total_rows': len(df_safe),
+                    'total_columns': len(df_safe.columns),
+                    'columns': column_names,
+                    'data': df_safe.to_dict('records'),
+                    'dtypes': {str(k): str(v) for k, v in df.dtypes.to_dict().items()}
+                }
+                
+            except Exception as e:
+                logging.error(f"处理预览数据时出错: {e}")
+                # 提供一个最基本的预览数据结构
+                preview_data = {
+                    'file_id': file_id,
+                    'filename': file_info['original_filename'],
+                    'sheet_name': sheet_name,
+                    'total_rows': 0,
+                    'total_columns': 0,
+                    'columns': [],
+                    'data': [],
+                    'dtypes': {},
+                    'error': f"数据处理错误: {str(e)}"
+                }
             
             return preview_data
             
