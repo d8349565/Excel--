@@ -451,17 +451,38 @@ def create_app(config_name=None):
                 configured_df = processor.apply_column_configuration(merged_df, cleaning_options)
                 
                 # 应用数据清洗选项（如果启用）
+                # 1. 去除空行
+                if cleaning_options.get('remove_empty_rows', False):
+                    key_columns = cleaning_options.get('key_columns')
+                    if key_columns:
+                        # 处理两种情况：字符串或列表
+                        if isinstance(key_columns, str):
+                            key_columns = [col.strip() for col in key_columns.split(',') if col.strip()]
+                        elif isinstance(key_columns, list):
+                            key_columns = [str(col).strip() for col in key_columns if str(col).strip()]
+                        else:
+                            key_columns = None
+                    configured_df = processor.remove_empty_rows(configured_df, key_columns)
+                
+                # 2. 数值清洗
                 if cleaning_options.get('clean_numeric', False):
+                    numeric_columns = cleaning_options.get('numeric_columns')
                     user_column_types = cleaning_options.get('column_types', {})
-                    configured_df = processor.clean_numeric_data(configured_df, user_column_types=user_column_types)
+                    configured_df = processor.clean_numeric_data(configured_df, numeric_columns, user_column_types=user_column_types)
                 
+                # 3. 日期解析
                 if cleaning_options.get('parse_dates', False):
+                    date_columns = cleaning_options.get('date_columns')
                     user_column_types = cleaning_options.get('column_types', {})
-                    configured_df = processor.parse_dates(configured_df, user_column_types=user_column_types)
+                    configured_df = processor.parse_dates(configured_df, date_columns, user_column_types=user_column_types)
                 
+                # 4. 去重
                 if cleaning_options.get('remove_duplicates', False):
+                    duplicate_columns = cleaning_options.get('duplicate_columns')
                     keep_strategy = cleaning_options.get('keep_strategy', 'first')
-                    configured_df = processor.remove_duplicates(configured_df, keep=keep_strategy)
+                    configured_df = processor.remove_duplicates(configured_df, duplicate_columns, keep_strategy)
+                
+                # 应用数据清洗选项完成
                 
                 # 限制预览结果，最多20行
                 preview_result = configured_df.head(20)

@@ -25,11 +25,8 @@
                     <button type="button" class="btn btn-outline-secondary btn-sm" onclick="showUnifiedConfig()">
                         <i class="bi bi-layers"></i> 统一配置
                     </button>
-                    <button type="button" class="btn btn-outline-info btn-sm" onclick="exportConfig()">
-                        <i class="bi bi-download"></i> 导出配置
-                    </button>
-                    <button type="button" class="btn btn-outline-success btn-sm" onclick="importConfig()">
-                        <i class="bi bi-upload"></i> 导入配置
+                    <button type="button" class="btn btn-outline-info btn-sm" onclick="showConfigManager()">
+                        <i class="bi bi-gear"></i> 配置管理
                     </button>
                 </div>
             </div>
@@ -353,13 +350,13 @@
     </div>
 </div>
 
-<!-- 配置导入导出模态框 -->
-<div class="modal fade" id="configImportExportModal" tabindex="-1">
+<!-- 配置管理模态框 -->
+<div class="modal fade" id="configManagerModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="configModalTitle">
-                    <i class="bi bi-upload"></i> 配置管理
+                <h5 class="modal-title">
+                    <i class="bi bi-gear"></i> 配置管理
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
@@ -622,6 +619,37 @@ function collectConfiguration() {
     
     if (hiddenColumns.size > 0) {
         cleaningOptions.hidden_columns = Array.from(hiddenColumns);
+    }
+    
+    // 收集单元格截取配置
+    const cellExtractionEnabled = document.getElementById('enableCellExtraction')?.checked || false;
+    if (cellExtractionEnabled) {
+        const cellExtractionRules = [];
+        document.querySelectorAll('#cellExtractionBody tr').forEach(row => {
+            const fileId = row.querySelector('.extraction-file-select')?.value;
+            const sheetName = row.querySelector('.extraction-sheet-input')?.value?.trim();
+            const rowNum = row.querySelector('.extraction-row-input')?.value?.trim();
+            const colNum = row.querySelector('.extraction-col-input')?.value?.trim();
+            const newColumnName = row.querySelector('.extraction-column-name')?.value?.trim();
+            const dataType = row.querySelector('.extraction-data-type')?.value;
+            const description = row.querySelector('.extraction-description')?.value?.trim();
+                
+            if (fileId && rowNum && colNum && newColumnName) {
+                cellExtractionRules.push({
+                    file_id: fileId,
+                    sheet_name: sheetName || null,
+                    row_number: parseInt(rowNum),
+                    column_number: parseInt(colNum),
+                    new_column_name: newColumnName,
+                    data_type: dataType,
+                    description: description
+                });
+            }
+        });
+            
+        if (cellExtractionRules.length > 0) {
+            cleaningOptions.cell_extraction_rules = cellExtractionRules;
+        }
     }
     
     // 收集导出选项
@@ -1362,29 +1390,29 @@ function applyUnifiedConfig() {
     alert(`已对 ${selectedFiles.length} 个文件应用统一配置`);
 }
 
-// ================ 配置导入导出功能 ================
+// ================ 配置管理功能 ================
 
-// 显示配置导入导出模态框
-function exportConfig() {
-    document.getElementById('configModalTitle').innerHTML = '<i class="bi bi-download"></i> 导出配置';
-    const modal = new bootstrap.Modal(document.getElementById('configImportExportModal'));
+// 显示配置管理模态框
+function showConfigManager() {
+    const modal = new bootstrap.Modal(document.getElementById('configManagerModal'));
+    loadCachedConfigsForManager();
     modal.show();
 }
 
-function importConfig() {
-    document.getElementById('configModalTitle').innerHTML = '<i class="bi bi-upload"></i> 导入配置';
-    const modal = new bootstrap.Modal(document.getElementById('configImportExportModal'));
-    modal.show();
+// 加载缓存配置列表
+function loadCachedConfigsForManager() {
+    updateCachedConfigSelect();
 }
 
-// 获取当前所有配置
+// 获取当前所有配置（包括列类型配置）
 function getCurrentConfig() {
     const config = {
         timestamp: new Date().toISOString(),
-        version: '1.0',
+        version: '1.1',
         files: [],
         cleaning: {},
         columns: [],
+        cellExtraction: {},
         export: {}
     };
     
@@ -1416,16 +1444,16 @@ function getCurrentConfig() {
         mergeStrategy: document.getElementById('mergeStrategy')?.value || 'outer'
     };
     
-    // 列配置
+    // 列配置（包括列类型配置的结果）
     document.querySelectorAll('#columnConfigBody tr').forEach(row => {
-        const originalNameElement = row.querySelector('.column-original-name');
-        const displayNameElement = row.querySelector('.column-display-name');
+        const originalNameElement = row.querySelector('.original-column-name');
+        const displayNameElement = row.querySelector('.display-column-name');
         const columnTypeElement = row.querySelector('.column-type');
         const visibleElement = row.querySelector('.column-visible');
         const orderElement = row.querySelector('.column-order');
         
         if (originalNameElement && displayNameElement && columnTypeElement && visibleElement && orderElement) {
-            const originalName = originalNameElement.textContent || '';
+            const originalName = originalNameElement.value || originalNameElement.textContent || '';
             const displayName = displayNameElement.value || '';
             const columnType = columnTypeElement.value || 'auto';
             const visible = visibleElement.checked;
@@ -1440,6 +1468,36 @@ function getCurrentConfig() {
             });
         }
     });
+    
+    // 单元格截取配置
+    config.cellExtraction = {
+        enabled: document.getElementById('enableCellExtraction')?.checked || false,
+        rules: []
+    };
+    
+    if (config.cellExtraction.enabled) {
+        document.querySelectorAll('#cellExtractionBody tr').forEach(row => {
+            const fileId = row.querySelector('.extraction-file-select')?.value;
+            const sheetName = row.querySelector('.extraction-sheet-input')?.value?.trim();
+            const rowNum = row.querySelector('.extraction-row-input')?.value?.trim();
+            const colNum = row.querySelector('.extraction-col-input')?.value?.trim();
+            const newColumnName = row.querySelector('.extraction-column-name')?.value?.trim();
+            const dataType = row.querySelector('.extraction-data-type')?.value;
+            const description = row.querySelector('.extraction-description')?.value?.trim();
+            
+            if (fileId && rowNum && colNum && newColumnName) {
+                config.cellExtraction.rules.push({
+                    fileId,
+                    sheetName: sheetName || null,
+                    rowNumber: parseInt(rowNum),
+                    columnNumber: parseInt(colNum),
+                    newColumnName,
+                    dataType,
+                    description
+                });
+            }
+        });
+    }
     
     // 导出配置
     config.export = {
@@ -1542,17 +1600,52 @@ function applyImportedConfig(config) {
     // 如果有列配置，重新加载列配置表格
     if (config.columns && config.columns.length > 0) {
         const tbody = document.getElementById('columnConfigBody');
-        tbody.innerHTML = '';
+        if (tbody) {
+            tbody.innerHTML = '';
+            
+            config.columns.forEach(columnConfig => {
+                addColumnConfigRow(
+                    columnConfig.originalName,
+                    columnConfig.displayName,
+                    columnConfig.columnType,
+                    columnConfig.visible,
+                    columnConfig.order
+                );
+            });
+        }
+    }
+    
+    // 应用单元格截取配置
+    if (config.cellExtraction) {
+        const enableCheckbox = document.getElementById('enableCellExtraction');
+        if (enableCheckbox) {
+            enableCheckbox.checked = config.cellExtraction.enabled || false;
+            // 触发变化事件以显示/隐藏设置区域
+            enableCheckbox.dispatchEvent(new Event('change'));
+        }
         
-        config.columns.forEach(columnConfig => {
-            addColumnConfigRow(
-                columnConfig.originalName,
-                columnConfig.displayName,
-                columnConfig.columnType,
-                columnConfig.visible,
-                columnConfig.order
-            );
-        });
+        // 清空现有规则
+        const tbody = document.getElementById('cellExtractionBody');
+        if (tbody) {
+            tbody.innerHTML = '';
+        }
+        
+        // 添加导入的规则
+        if (config.cellExtraction.rules && config.cellExtraction.rules.length > 0) {
+            config.cellExtraction.rules.forEach(rule => {
+                addCellExtractionRule();
+                const lastRow = tbody.lastElementChild;
+                if (lastRow) {
+                    lastRow.querySelector('.extraction-file-select').value = rule.fileId || '';
+                    lastRow.querySelector('.extraction-sheet-input').value = rule.sheetName || '';
+                    lastRow.querySelector('.extraction-row-input').value = rule.rowNumber || '';
+                    lastRow.querySelector('.extraction-col-input').value = rule.columnNumber || '';
+                    lastRow.querySelector('.extraction-column-name').value = rule.newColumnName || '';
+                    lastRow.querySelector('.extraction-data-type').value = rule.dataType || 'text';
+                    lastRow.querySelector('.extraction-description').value = rule.description || '';
+                }
+            });
+        }
     }
 }
 
@@ -1679,7 +1772,7 @@ function applyCachedConfig() {
             alert('配置已成功应用');
             
             // 关闭模态框
-            const modal = bootstrap.Modal.getInstance(document.getElementById('configImportExportModal'));
+            const modal = bootstrap.Modal.getInstance(document.getElementById('configManagerModal'));
             if (modal) {
                 modal.hide();
             }
