@@ -290,6 +290,62 @@ def create_app(config_name=None):
                 'error': str(e)
             }), 400
     
+    @app.route('/api/file_sheets/<file_id>')
+    @login_required
+    def get_file_sheets(file_id):
+        """获取文件的工作表列表"""
+        try:
+            session_id = get_session_id()
+            
+            # 验证文件权限
+            file_info = app.file_manager.get_file_info(file_id, session_id)
+            if not file_info:
+                return jsonify({'error': '文件不存在或无权访问'}), 404
+            
+            # 获取工作表列表
+            sheets = app.file_manager.get_sheet_names(file_id, session_id)
+            
+            return jsonify({
+                'success': True,
+                'sheets': sheets
+            })
+            
+        except Exception as e:
+            app.logger.error(f"获取工作表列表失败: {str(e)}")
+            return jsonify({'error': f'获取工作表列表失败: {str(e)}'}), 500
+
+    @app.route('/api/preview_cell_value', methods=['POST'])
+    @login_required
+    def preview_cell_value():
+        """预览指定单元格的值"""
+        try:
+            session_id = get_session_id()
+            data = request.get_json()
+            
+            file_id = data.get('file_id')
+            sheet_name = data.get('sheet_name')
+            cell_address = data.get('cell_address')
+            
+            if not all([file_id, sheet_name, cell_address]):
+                return jsonify({'error': '缺少必要参数'}), 400
+            
+            # 验证文件权限
+            file_info = app.file_manager.get_file_info(file_id, session_id)
+            if not file_info:
+                return jsonify({'error': '文件不存在或无权访问'}), 404
+            
+            # 获取单元格值
+            cell_value = app.file_manager.read_cell_value_by_address(file_id, sheet_name, cell_address, session_id)
+            
+            return jsonify({
+                'success': True,
+                'value': str(cell_value) if cell_value is not None else ''
+            })
+            
+        except Exception as e:
+            app.logger.error(f"预览单元格值失败: {str(e)}")
+            return jsonify({'error': f'预览单元格值失败: {str(e)}'}), 500
+
     @app.route('/api/detect_columns/<file_id>')
     @login_required
     def detect_columns(file_id):
@@ -424,12 +480,12 @@ def create_app(config_name=None):
                 source_name = config.get('source_name', f'文件{len(dataframes)+1}')
                 
                 # 验证文件权限
-                file_info = file_manager.get_file_info(file_id, session_id)
+                file_info = app.file_manager.get_file_info(file_id, session_id)
                 if not file_info:
                     continue
                 
                 # 读取数据
-                df = file_manager.read_full_file(file_id, sheet_name, header_row, session_id)
+                df = app.file_manager.read_full_file(file_id, sheet_name, header_row, session_id)
                 if df is not None:
                     # 限制预览数据量，每个文件最多取10行
                     preview_df = df.head(10)
@@ -481,6 +537,15 @@ def create_app(config_name=None):
                     duplicate_columns = cleaning_options.get('duplicate_columns')
                     keep_strategy = cleaning_options.get('keep_strategy', 'first')
                     configured_df = processor.remove_duplicates(configured_df, duplicate_columns, keep_strategy)
+                
+                # 5. 处理固定单元格数据提取（预览模式）
+                if cleaning_options.get('fixed_cells_rules'):
+                    configured_df = processor.extract_fixed_cells_data(
+                        configured_df, 
+                        cleaning_options.get('fixed_cells_rules'), 
+                        app.file_manager, 
+                        session_id
+                    )
                 
                 # 应用数据清洗选项完成
                 

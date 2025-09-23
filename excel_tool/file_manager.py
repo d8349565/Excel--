@@ -9,6 +9,8 @@ from datetime import datetime, timedelta
 import logging
 from typing import List, Dict, Optional, Tuple
 import json
+import openpyxl
+import re
 
 class FileManager:
     """文件管理器，处理文件上传、预览、临时文件管理等功能"""
@@ -698,3 +700,173 @@ class FileManager:
             stats['errors'] += 1
             
         return stats
+    
+    def read_cell_value(self, file_id: str, sheet_name: str = None, row: int = 1, col: int = 1, session_id: str = None):
+        """
+        读取指定文件的特定单元格值
+        
+        Args:
+            file_id: 文件ID
+            sheet_name: 工作表名称
+            row: 行号 (1-based)
+            col: 列号 (1-based)
+            session_id: 用户会话ID
+            
+        Returns:
+            单元格的值
+        """
+        try:
+            file_info = self.get_file_info(file_id, session_id)
+            if not file_info:
+                raise ValueError(f"文件不存在: {file_id}")
+            
+            file_path = file_info['file_path']
+            extension = file_info['extension']
+            
+            if extension == 'csv':
+                # 对于CSV文件，读取指定位置的值
+                df = self._read_csv_with_encoding_detection(file_path, header=None, nrows=row)
+                if len(df) >= row and len(df.columns) >= col:
+                    return df.iloc[row-1, col-1]  # 转换为0-based索引
+                else:
+                    return None
+                    
+            elif extension in ['xlsx', 'xls']:
+                if not sheet_name:
+                    # 使用默认工作表
+                    if file_info['sheets'] and len(file_info['sheets']) > 0:
+                        sheet_name = file_info['sheets'][0]
+                    else:
+                        sheet_name = 0
+                
+                # 读取Excel文件的特定单元格
+                try:
+                    # 只读取需要的行数以提高性能
+                    df = pd.read_excel(
+                        file_path, 
+                        sheet_name=sheet_name, 
+                        header=None,  # 不使用表头
+                        nrows=row,    # 只读取到需要的行
+                        engine='openpyxl'
+                    )
+                    
+                    # 强制垃圾回收以释放文件句柄
+                    import gc
+                    gc.collect()
+                    
+                    # 检查行列是否存在
+                    if len(df) >= row and len(df.columns) >= col:
+                        cell_value = df.iloc[row-1, col-1]  # 转换为0-based索引
+                        
+                        # 处理NaN值
+                        if pd.isna(cell_value):
+                            return None
+                        
+                        return cell_value
+                    else:
+                        return None
+                        
+                except Exception as e:
+                    # 确保进行垃圾回收
+                    import gc
+                    gc.collect()
+                    raise e
+            else:
+                raise ValueError(f"不支持的文件类型: {extension}")
+                
+        except Exception as e:
+            logging.error(f"读取单元格值时出错: {e}")
+            return None
+
+    def parse_cell_address(self, cell_address: str) -> tuple:
+        """
+        解析Excel单元格地址为行列数字
+        
+        Args:
+            cell_address: Excel单元格地址，如 'A1', 'B22', 'AA100'
+            
+        Returns:
+            tuple: (row, col) 1-based 索引
+        """
+        # 匹配Excel单元格地址格式
+        match = re.match(r'^([A-Z]+)([0-9]+)$', cell_address.upper())
+        if not match:
+            raise ValueError(f"无效的单元格地址格式: {cell_address}")
+        
+        col_letters, row_str = match.groups()
+        row = int(row_str)
+        
+        # 将列字母转换为数字
+        col = 0
+        for char in col_letters:
+            col = col * 26 + (ord(char) - ord('A') + 1)
+        
+        return row, col
+
+    def read_cell_value_by_address(self, file_id: str, sheet_name: str, cell_address: str, session_id: str = None):
+        """
+        通过单元格地址读取单元格值
+        
+        Args:
+            file_id: 文件ID
+            sheet_name: 工作表名称
+            cell_address: 单元格地址，如 'A1', 'B22'
+            session_id: 用户会话ID
+            
+        Returns:
+            单元格的值
+        """
+        try:
+            row, col = self.parse_cell_address(cell_address)
+            return self.read_cell_value(file_id, sheet_name, row, col, session_id)
+        except Exception as e:
+            logging.error(f"通过地址读取单元格值时出错: {e}")
+            return None
+
+    def get_sheet_names(self, file_id: str, session_id: str = None) -> List[str]:
+        """
+        获取Excel文件的所有工作表名称
+        
+        Args:
+            file_id: 文件ID
+            session_id: 用户会话ID
+            
+        Returns:
+            List[str]: 工作表名称列表
+        """
+        try:
+            file_info = self.get_file_info(file_id, session_id)
+            if not file_info:
+                raise ValueError(f"文件不存在: {file_id}")
+            
+            file_path = file_info['file_path']
+            extension = file_info['extension']
+            
+            if extension == 'csv':
+                # CSV文件只有一个"工作表"
+                return ['CSV']
+                
+            elif extension in ['xlsx', 'xls']:
+                # 使用openpyxl获取工作表名称
+                try:
+                    workbook = openpyxl.load_workbook(file_path, read_only=True)
+                    sheet_names = workbook.sheetnames
+                    workbook.close()
+                    return sheet_names
+                except Exception as e:
+                    logging.error(f"使用openpyxl获取工作表名称失败: {e}")
+                    # 回退到pandas方法
+                    try:
+                        excel_file = pd.ExcelFile(file_path, engine='openpyxl')
+                        sheet_names = excel_file.sheet_names
+                        excel_file.close()
+                        return sheet_names
+                    except Exception as e2:
+                        logging.error(f"使用pandas获取工作表名称也失败: {e2}")
+                        return ['Sheet1']  # 返回默认工作表名
+            else:
+                raise ValueError(f"不支持的文件类型: {extension}")
+                
+        except Exception as e:
+            logging.error(f"获取工作表名称时出错: {e}")
+            return []

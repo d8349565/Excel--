@@ -457,7 +457,7 @@ class DataProcessor:
             raise
     
     def process_data(self, dataframes: List[Tuple[pd.DataFrame, str]], 
-                    cleaning_options: Dict[str, Any]) -> pd.DataFrame:
+                    cleaning_options: Dict[str, Any], file_manager=None, session_id: str = None) -> pd.DataFrame:
         """
         完整的数据处理流程
         
@@ -506,6 +506,15 @@ class DataProcessor:
                 duplicate_columns = cleaning_options.get('duplicate_columns')
                 keep_strategy = cleaning_options.get('keep_strategy', 'first')
                 result_df = self.remove_duplicates(result_df, duplicate_columns, keep_strategy)
+            
+            # 5. 处理固定单元格数据提取
+            if cleaning_options.get('fixed_cells_rules') and file_manager:
+                result_df = self.extract_fixed_cells_data(
+                    result_df, 
+                    cleaning_options.get('fixed_cells_rules'), 
+                    file_manager, 
+                    session_id
+                )
             
             # 更新最终统计
             self.processing_stats['output_rows'] = len(result_df)
@@ -609,3 +618,76 @@ class DataProcessor:
         except Exception as e:
             logging.error(f"应用列配置时出错: {e}")
             return df  # 返回原始数据框
+    
+    def extract_fixed_cells_data(self, result_df: pd.DataFrame, fixed_cells_rules: List[Dict], 
+                                file_manager, session_id: str = None) -> pd.DataFrame:
+        """
+        从原始文件中提取固定单元格数据并添加为新列
+        
+        Args:
+            result_df: 已合并的DataFrame
+            fixed_cells_rules: 固定单元格提取规则列表
+            file_manager: 文件管理器实例，用于读取单元格数据
+            session_id: 用户会话ID
+            
+        Returns:
+            添加了固定单元格列的DataFrame
+        """
+        try:
+            if not fixed_cells_rules:
+                return result_df
+            
+            logging.info(f"开始处理 {len(fixed_cells_rules)} 个固定单元格配置")
+            
+            # 为每个规则提取数据
+            extracted_data = {}
+            
+            for rule in fixed_cells_rules:
+                try:
+                    file_id = rule.get('file_id')
+                    column_name = rule.get('column_name')
+                    cell_address = rule.get('cell_address')
+                    sheet_name = rule.get('sheet_name')
+                    
+                    if not column_name or not file_id or not cell_address or not sheet_name:
+                        continue
+                    
+                    # 从原始文件中读取固定单元格的值
+                    cell_value = file_manager.read_cell_value_by_address(
+                        file_id=file_id,
+                        sheet_name=sheet_name,
+                        cell_address=cell_address,
+                        session_id=session_id
+                    )
+                    
+                    # 如果读取失败，使用默认值
+                    if cell_value is None:
+                        cell_value = ""
+                        logging.warning(f"无法读取单元格值 {file_id}[{cell_address}]，使用空值")
+                    
+                    # 转换为字符串格式
+                    cell_value = str(cell_value) if cell_value is not None else ""
+                    
+                    extracted_data[column_name] = cell_value
+                    logging.info(f"成功读取固定单元格: {column_name} = {cell_value} (地址: {cell_address})")
+                    
+                except Exception as e:
+                    logging.error(f"处理固定单元格规则时出错: {e}")
+                    # 设置默认值
+                    if column_name:
+                        extracted_data[column_name] = ""
+                    continue
+            
+            # 将提取的数据添加到结果DataFrame中
+            if extracted_data:
+                for column_name, value in extracted_data.items():
+                    # 为所有行添加相同的固定值
+                    result_df[column_name] = value
+                
+                logging.info(f"成功添加 {len(extracted_data)} 个固定单元格列")
+            
+            return result_df
+            
+        except Exception as e:
+            logging.error(f"提取固定单元格数据时出错: {e}")
+            return result_df

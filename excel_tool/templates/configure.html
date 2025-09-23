@@ -285,6 +285,80 @@
                         </div>
                     </div>
                     
+                    <!-- 固定单元格配置 -->
+                    <div class="row mt-4">
+                        <div class="col-12">
+                            <h6 class="text-primary"><i class="bi bi-pin"></i> 固定单元格配置</h6>
+                            <hr>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-12">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6 class="card-title mb-0">
+                                        固定单元格数据提取
+                                        <button type="button" class="btn btn-sm btn-outline-success float-end" 
+                                                onclick="addFixedCellRow()">
+                                            <i class="bi bi-plus"></i> 添加配置
+                                        </button>
+                                    </h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="mb-3">
+                                        <small class="text-muted">
+                                            <i class="bi bi-info-circle"></i>
+                                            配置固定单元格位置，从中提取数据并添加为新列。支持多个文件的相同位置提取。
+                                        </small>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="enableFixedCells">
+                                            <label class="form-check-label" for="enableFixedCells">
+                                                启用固定单元格数据提取
+                                            </label>
+                                        </div>
+                                    </div>
+                                    
+                                    <div id="fixed-cells-settings" style="display: none;">
+                                        <div class="table-responsive">
+                                            <table class="table table-bordered">
+                                                <thead>
+                                                    <tr>
+                                                        <th style="width: 20%;">源文件</th>
+                                                        <th style="width: 15%;">工作表</th>
+                                                        <th style="width: 12%;">单元格地址</th>
+                                                        <th style="width: 18%;">列名称</th>
+                                                        <th style="width: 15%;">预览值</th>
+                                                        <th style="width: 20%;">操作</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody id="fixed-cells-table-body">
+                                                    <!-- 动态添加的固定单元格配置行 -->
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                        
+                                        <div class="text-center">
+                                            <button type="button" class="btn btn-outline-primary btn-sm" 
+                                                    onclick="addFixedCellRow()">
+                                                <i class="bi bi-plus"></i> 添加固定单元格
+                                            </button>
+                                        </div>
+                                    </div>
+                                    
+                                    <div id="no-fixed-cells" class="text-center text-muted py-3">
+                                        <i class="bi bi-grid"></i>
+                                        <div>暂无固定单元格配置</div>
+                                        <small>勾选"启用固定单元格数据提取"开始配置</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
                     <!-- 列类型配置 -->
                     <div class="row mt-4">
                         <div class="col-12">
@@ -734,7 +808,35 @@ function collectConfiguration() {
         cleaningOptions.hidden_columns = Array.from(hiddenColumns);
     }
     
-    // 收集单元格截取配置
+    // 收集固定单元格配置
+    const fixedCellsEnabled = document.getElementById('enableFixedCells')?.checked || false;
+    if (fixedCellsEnabled) {
+        const fixedCellsRules = [];
+        document.querySelectorAll('#fixed-cells-table-body tr').forEach(row => {
+            const fileId = row.querySelector('.fixed-cell-file-select')?.value;
+            const sheetName = row.querySelector('.fixed-cell-sheet-select')?.value?.trim();
+            const cellAddress = row.querySelector('.fixed-cell-address-input')?.value?.trim().toUpperCase();
+            const newColumnName = row.querySelector('.fixed-cell-column-name')?.value?.trim();
+                
+            if (fileId && sheetName && cellAddress && newColumnName) {
+                // 验证单元格地址格式
+                if (cellAddress.match(/^[A-Z]+[0-9]+$/)) {
+                    fixedCellsRules.push({
+                        file_id: fileId,
+                        sheet_name: sheetName,
+                        cell_address: cellAddress,
+                        column_name: newColumnName
+                    });
+                }
+            }
+        });
+            
+        if (fixedCellsRules.length > 0) {
+            cleaningOptions.fixed_cells_rules = fixedCellsRules;
+        }
+    }
+
+    // 收集单元格截取配置（保持向后兼容）
     const cellExtractionEnabled = document.getElementById('enableCellExtraction')?.checked || false;
     if (cellExtractionEnabled) {
         const cellExtractionRules = [];
@@ -1804,6 +1906,190 @@ function applyUnifiedConfig() {
     alert(`已对 ${selectedFiles.length} 个文件应用统一配置`);
 }
 
+// ================ 固定单元格配置功能 ================
+
+// 启用/禁用固定单元格配置的显示控制
+document.addEventListener('DOMContentLoaded', function() {
+    const enableCheckbox = document.getElementById('enableFixedCells');
+    const settingsDiv = document.getElementById('fixed-cells-settings');
+    const noFixedCellsDiv = document.getElementById('no-fixed-cells');
+    
+    if (enableCheckbox && settingsDiv && noFixedCellsDiv) {
+        enableCheckbox.addEventListener('change', function() {
+            if (this.checked) {
+                settingsDiv.style.display = 'block';
+                noFixedCellsDiv.style.display = 'none';
+            } else {
+                settingsDiv.style.display = 'none';
+                noFixedCellsDiv.style.display = 'block';
+                // 清空配置表格
+                const tableBody = document.getElementById('fixed-cells-table-body');
+                if (tableBody) {
+                    tableBody.innerHTML = '';
+                }
+            }
+        });
+    }
+});
+
+// 添加固定单元格配置行
+function addFixedCellRow() {
+    const tableBody = document.getElementById('fixed-cells-table-body');
+    if (!tableBody) return;
+    
+    const row = document.createElement('tr');
+    
+    // 获取当前文件列表用于下拉选择
+    const fileOptions = Array.from(document.querySelectorAll('.file-config')).map(config => {
+        const fileId = config.dataset.fileId;
+        const filename = config.querySelector('label').textContent.trim();
+        return { fileId, filename };
+    });
+    
+    const rowId = 'fixed-cell-row-' + Date.now();
+    row.id = rowId;
+    
+    row.innerHTML = `
+        <td>
+            <select class="form-select form-select-sm fixed-cell-file-select" required 
+                    onchange="updateSheetOptions(this, '${rowId}')">
+                <option value="">选择文件</option>
+                ${fileOptions.map(file => 
+                    `<option value="${file.fileId}">${file.filename}</option>`
+                ).join('')}
+            </select>
+        </td>
+        <td>
+            <select class="form-select form-select-sm fixed-cell-sheet-select" required disabled>
+                <option value="">先选择文件</option>
+            </select>
+        </td>
+        <td>
+            <input type="text" class="form-control form-control-sm fixed-cell-address-input" 
+                   placeholder="如: A1, B22" pattern="^[A-Z]+[0-9]+$" required
+                   oninput="previewCellValue(this, '${rowId}')" title="输入Excel单元格地址，如A1、B22等">
+        </td>
+        <td>
+            <input type="text" class="form-control form-control-sm fixed-cell-column-name" 
+                   placeholder="新列名" required>
+        </td>
+        <td>
+            <span class="badge bg-secondary fixed-cell-preview-value">未预览</span>
+            <button type="button" class="btn btn-outline-primary btn-sm ms-1" 
+                    onclick="previewCellValue(document.querySelector('#${rowId} .fixed-cell-address-input'), '${rowId}')">
+                <i class="bi bi-eye"></i>
+            </button>
+        </td>
+        <td>
+            <button type="button" class="btn btn-danger btn-sm" onclick="removeFixedCellRow(this)">
+                <i class="bi bi-trash"></i>
+            </button>
+        </td>
+    `;
+    
+    tableBody.appendChild(row);
+}
+
+// 删除固定单元格配置行
+function removeFixedCellRow(button) {
+    const row = button.closest('tr');
+    if (row) {
+        row.remove();
+    }
+}
+
+// 更新工作表选项
+async function updateSheetOptions(fileSelect, rowId) {
+    const fileId = fileSelect.value;
+    const sheetSelect = document.querySelector(`#${rowId} .fixed-cell-sheet-select`);
+    
+    if (!fileId) {
+        sheetSelect.innerHTML = '<option value="">先选择文件</option>';
+        sheetSelect.disabled = true;
+        return;
+    }
+    
+    try {
+        // 获取文件的工作表列表
+        const response = await fetch(`/api/file_sheets/${fileId}`);
+        if (response.ok) {
+            const data = await response.json();
+            sheetSelect.innerHTML = '<option value="">选择工作表</option>';
+            data.sheets.forEach(sheet => {
+                sheetSelect.innerHTML += `<option value="${sheet}">${sheet}</option>`;
+            });
+            sheetSelect.disabled = false;
+        } else {
+            throw new Error('获取工作表列表失败');
+        }
+    } catch (error) {
+        console.error('获取工作表失败:', error);
+        sheetSelect.innerHTML = '<option value="">获取失败</option>';
+        sheetSelect.disabled = true;
+    }
+}
+
+// 预览单元格值
+async function previewCellValue(addressInput, rowId) {
+    const row = document.getElementById(rowId);
+    const fileSelect = row.querySelector('.fixed-cell-file-select');
+    const sheetSelect = row.querySelector('.fixed-cell-sheet-select');
+    const previewElement = row.querySelector('.fixed-cell-preview-value');
+    
+    const fileId = fileSelect.value;
+    const sheetName = sheetSelect.value;
+    const cellAddress = addressInput.value.trim().toUpperCase();
+    
+    // 验证单元格地址格式
+    if (!cellAddress.match(/^[A-Z]+[0-9]+$/)) {
+        previewElement.textContent = '格式错误';
+        previewElement.className = 'badge bg-danger fixed-cell-preview-value';
+        return;
+    }
+    
+    if (!fileId || !sheetName) {
+        previewElement.textContent = '请先选择文件和工作表';
+        previewElement.className = 'badge bg-warning fixed-cell-preview-value';
+        return;
+    }
+    
+    previewElement.textContent = '预览中...';
+    previewElement.className = 'badge bg-info fixed-cell-preview-value';
+    
+    try {
+        const response = await fetch('/api/preview_cell_value', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                file_id: fileId,
+                sheet_name: sheetName,
+                cell_address: cellAddress
+            })
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            if (data.success) {
+                const value = data.value;
+                previewElement.textContent = value || '(空值)';
+                previewElement.className = 'badge bg-success fixed-cell-preview-value';
+                previewElement.title = `单元格${cellAddress}的值: ${value}`;
+            } else {
+                previewElement.textContent = data.error || '预览失败';
+                previewElement.className = 'badge bg-danger fixed-cell-preview-value';
+            }
+        } else {
+            throw new Error('网络请求失败');
+        }
+    } catch (error) {
+        console.error('预览单元格值失败:', error);
+        previewElement.textContent = '预览失败';
+        previewElement.className = 'badge bg-danger fixed-cell-preview-value';
+    }
+}
+
 // ================ 配置管理功能 ================
 
 // 显示配置管理模态框
@@ -1909,6 +2195,33 @@ function getCurrentConfig() {
                     dataType,
                     description
                 });
+            }
+        });
+    }
+    
+    // 固定单元格配置
+    config.fixedCells = {
+        enabled: document.getElementById('enableFixedCells')?.checked || false,
+        rules: []
+    };
+    
+    if (config.fixedCells.enabled) {
+        document.querySelectorAll('#fixed-cells-table-body tr').forEach(row => {
+            const fileId = row.querySelector('.fixed-cell-file-select')?.value;
+            const sheetName = row.querySelector('.fixed-cell-sheet-select')?.value?.trim();
+            const cellAddress = row.querySelector('.fixed-cell-address-input')?.value?.trim().toUpperCase();
+            const newColumnName = row.querySelector('.fixed-cell-column-name')?.value?.trim();
+            
+            if (fileId && sheetName && cellAddress && newColumnName) {
+                // 验证单元格地址格式
+                if (cellAddress.match(/^[A-Z]+[0-9]+$/)) {
+                    config.fixedCells.rules.push({
+                        fileId,
+                        sheetName,
+                        cellAddress,
+                        newColumnName
+                    });
+                }
             }
         });
     }
@@ -2077,6 +2390,61 @@ function applyImportedConfig(config) {
                     lastRow.querySelector('.extraction-column-name').value = rule.newColumnName || '';
                     lastRow.querySelector('.extraction-data-type').value = rule.dataType || 'text';
                     lastRow.querySelector('.extraction-description').value = rule.description || '';
+                }
+            });
+        }
+    }
+    
+    // 应用固定单元格配置
+    if (config.fixedCells) {
+        const enableCheckbox = document.getElementById('enableFixedCells');
+        if (enableCheckbox) {
+            enableCheckbox.checked = config.fixedCells.enabled || false;
+            // 触发变化事件以显示/隐藏设置区域
+            enableCheckbox.dispatchEvent(new Event('change'));
+        }
+        
+        // 清空现有规则
+        const tbody = document.getElementById('fixed-cells-table-body');
+        if (tbody) {
+            tbody.innerHTML = '';
+        }
+        
+        // 添加导入的规则
+        if (config.fixedCells.rules && config.fixedCells.rules.length > 0) {
+            config.fixedCells.rules.forEach(rule => {
+                addFixedCellRow();
+                const lastRow = tbody.lastElementChild;
+                if (lastRow) {
+                    // 设置文件选择
+                    const fileSelect = lastRow.querySelector('.fixed-cell-file-select');
+                    if (fileSelect) {
+                        fileSelect.value = rule.fileId || '';
+                        // 触发文件选择变化事件以加载工作表
+                        if (rule.fileId) {
+                            updateSheetOptions(fileSelect, lastRow.id);
+                        }
+                    }
+                    
+                    // 设置工作表选择（需要等待工作表加载完成）
+                    setTimeout(() => {
+                        const sheetSelect = lastRow.querySelector('.fixed-cell-sheet-select');
+                        if (sheetSelect && rule.sheetName) {
+                            sheetSelect.value = rule.sheetName;
+                        }
+                    }, 500);
+                    
+                    // 设置单元格地址
+                    const addressInput = lastRow.querySelector('.fixed-cell-address-input');
+                    if (addressInput && rule.cellAddress) {
+                        addressInput.value = rule.cellAddress;
+                    }
+                    
+                    // 设置列名
+                    const columnNameInput = lastRow.querySelector('.fixed-cell-column-name');
+                    if (columnNameInput && rule.newColumnName) {
+                        columnNameInput.value = rule.newColumnName;
+                    }
                 }
             });
         }
