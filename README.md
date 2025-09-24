@@ -2,7 +2,11 @@
 
 一个功能强大的基于 Flask 的 Web 应用程序，专为 Excel/CSV 文件处理而设计。提供完整的文件上传、预览、管理和数据处理解决方案，支持批量数据合并、单元格提取、列排序等高级功能。通过直观的 Web 界面，用户可以轻松处理大量 Excel/CSV 数据，无需复杂的编程知识。
 
+![1758715051137](images/README/1758715051137.png)
+
 ![1758644736074](images/README/1758644736074.png)
+
+![1758715051137](https://file+.vscode-resource.vscode-cdn.net/f%3A/Python/Excel/Excel--/images/README/1758715051137.png)
 
 ## 主要特性
 
