@@ -159,7 +159,7 @@ pyinstaller --onefile --add-data "templates;templates" --add-data "static;static
 
 ### 微信赞赏
 
-<img src="images/README/1758644628077.png" alt="1758644628077" style="zoom:33%;" />
+![1758715329173](images/README/1758715329173.png)
 
 ## 贡献
 
