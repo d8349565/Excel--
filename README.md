@@ -167,7 +167,7 @@ pyinstaller --onefile --add-data "templates;templates" --add-data "static;static
 
 ## 更新日志
 
-### v1.2.0 (2025-09-24)
+### v 1.2.0 (2025-09-24)
 
 - ✨ 新增单元格提取功能
 - 🔧 优化配置管理
@@ -175,7 +175,12 @@ pyinstaller --onefile --add-data "templates;templates" --add-data "static;static
 - 📋 优化列管理逻辑，新增拖拽排序
 - 🐛 修复部分bug
 
-### v1.0.0
+
+### v 1.1.0
+
+* 🐛 修复 bug
+
+### v 1.0.0
 
 - 初始版本发布
 - 支持文件上传、预览、合并
