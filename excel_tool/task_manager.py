@@ -8,6 +8,9 @@ from typing import Dict, Any, Optional, Callable
 from enum import Enum
 import json
 import os
+import multiprocessing
+import pickle
+from pathlib import Path
 
 class TaskStatus(Enum):
     """任务状态枚举"""
@@ -63,6 +66,49 @@ class TaskManager:
         
         # 注册的任务处理器
         self.task_handlers: Dict[str, Callable] = {}
+        
+        # 多进程支持：使用文件系统存储任务状态
+        self.task_storage_dir = Path(os.environ.get('TASK_STORAGE_DIR', 'tasks_storage'))
+        self.task_storage_dir.mkdir(exist_ok=True)
+    
+    def _save_task_to_file(self, task: Task):
+        """将任务保存到文件"""
+        try:
+            task_file = self.task_storage_dir / f"{task.task_id}.json"
+            with open(task_file, 'w', encoding='utf-8') as f:
+                json.dump(task.to_dict(), f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logging.error(f"保存任务到文件失败: {e}")
+    
+    def _load_task_from_file(self, task_id: str) -> Optional[Task]:
+        """从文件加载任务"""
+        try:
+            task_file = self.task_storage_dir / f"{task_id}.json"
+            if not task_file.exists():
+                return None
+            
+            with open(task_file, 'r', encoding='utf-8') as f:
+                task_data = json.load(f)
+            
+            # 重建Task对象
+            task = Task(
+                task_data['task_id'],
+                task_data['task_type'],
+                task_data['parameters']
+            )
+            task.status = TaskStatus(task_data['status'])
+            task.created_at = datetime.fromisoformat(task_data['created_at'])
+            task.started_at = datetime.fromisoformat(task_data['started_at']) if task_data['started_at'] else None
+            task.completed_at = datetime.fromisoformat(task_data['completed_at']) if task_data['completed_at'] else None
+            task.progress = task_data['progress']
+            task.result = task_data['result']
+            task.error_message = task_data['error_message']
+            task.logs = task_data['logs']
+            
+            return task
+        except Exception as e:
+            logging.error(f"从文件加载任务失败: {e}")
+            return None
     
     def start(self):
         """启动任务管理器"""
@@ -123,9 +169,12 @@ class TaskManager:
         task_id = str(uuid.uuid4())
         task = Task(task_id, task_type, parameters)
         
-        # 保存任务
+        # 保存任务到内存
         with self.lock:
             self.tasks[task_id] = task
+        
+        # 保存任务到文件（用于多进程共享）
+        self._save_task_to_file(task)
         
         # 添加到队列
         self.task_queue.put(task_id)
@@ -136,7 +185,18 @@ class TaskManager:
     def get_task(self, task_id: str) -> Optional[Task]:
         """获取任务信息"""
         with self.lock:
-            return self.tasks.get(task_id)
+            # 先从内存中查找
+            task = self.tasks.get(task_id)
+            if task is not None:
+                return task
+            
+            # 如果内存中没有，从文件中加载
+            task = self._load_task_from_file(task_id)
+            if task is not None:
+                # 加载到内存中
+                self.tasks[task_id] = task
+            
+            return task
     
     def get_task_status(self, task_id: str) -> Optional[Dict[str, Any]]:
         """获取任务状态"""
@@ -189,6 +249,8 @@ class TaskManager:
                 task.status = TaskStatus.RUNNING
                 task.started_at = datetime.now()
                 task.progress = 0
+            # 同步到文件
+            self._save_task_to_file(task)
             
             logging.info(f"开始执行任务: {task_id}")
             
@@ -201,6 +263,8 @@ class TaskManager:
                             'timestamp': datetime.now().isoformat(),
                             'message': message
                         })
+                # 同步进度到文件
+                self._save_task_to_file(task)
             
             # 获取任务处理器
             handler = self.task_handlers.get(task.task_type)
@@ -231,6 +295,8 @@ class TaskManager:
                         task.status = TaskStatus.TIMEOUT
                         task.error_message = f"任务超时（{self.task_timeout}秒）"
                         task.completed_at = datetime.now()
+                    # 同步到文件
+                    self._save_task_to_file(task)
                     logging.warning(f"任务超时: {task_id}")
                     return
                 
@@ -246,12 +312,16 @@ class TaskManager:
                         task.result = result_data
                         task.progress = 100
                         task.completed_at = datetime.now()
+                    # 同步到文件
+                    self._save_task_to_file(task)
                     logging.info(f"任务完成: {task_id}")
                 else:
                     with self.lock:
                         task.status = TaskStatus.FAILED
                         task.error_message = result_data
                         task.completed_at = datetime.now()
+                    # 同步到文件
+                    self._save_task_to_file(task)
                     logging.error(f"任务失败: {task_id} - {result_data}")
                     
             except queue.Empty:
@@ -259,12 +329,16 @@ class TaskManager:
                     task.status = TaskStatus.FAILED
                     task.error_message = "任务处理器未返回结果"
                     task.completed_at = datetime.now()
+                # 同步到文件
+                self._save_task_to_file(task)
         
         except Exception as e:
             with self.lock:
                 task.status = TaskStatus.FAILED
                 task.error_message = str(e)
                 task.completed_at = datetime.now()
+            # 同步到文件
+            self._save_task_to_file(task)
             logging.error(f"执行任务时出错: {task_id} - {e}")
     
     def cleanup_old_tasks(self, max_age_hours: int = 24):
