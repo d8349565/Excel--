@@ -35,7 +35,7 @@
 1. **克隆项目**
 
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/d8349565/Excel--.git
    cd Excel--
    ```
 2. **安装依赖**
@@ -174,7 +174,6 @@ pyinstaller --onefile --add-data "templates;templates" --add-data "static;static
 - 🎨 优化系统管理员界面
 - 📋 优化列管理逻辑，新增拖拽排序
 - 🐛 修复部分bug
-
 
 ### v 1.1.0
 
