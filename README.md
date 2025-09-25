@@ -4,6 +4,8 @@
 
 ![1758644736074](images/README/1758644736074.png)
 
+![1758715051137](images/README/1758715051137.png)
+
 ## 主要特性
 
 - **🔐 安全认证**: 双层密码保护系统，支持普通用户和管理员权限
@@ -157,7 +159,7 @@ pyinstaller --onefile --add-data "templates;templates" --add-data "static;static
 
 ### 微信赞赏
 
-<img src="images/README/1758644628077.png" alt="1758644628077" style="zoom:33%;" />
+![1758715329173](images/README/1758715329173.png)
 
 ## 贡献
 
@@ -165,7 +167,7 @@ pyinstaller --onefile --add-data "templates;templates" --add-data "static;static
 
 ## 更新日志
 
-### v1.2.0 (2025-09-24)
+### v 1.2.0 (2025-09-24)
 
 - ✨ 新增单元格提取功能
 - 🔧 优化配置管理
@@ -173,7 +175,12 @@ pyinstaller --onefile --add-data "templates;templates" --add-data "static;static
 - 📋 优化列管理逻辑，新增拖拽排序
 - 🐛 修复部分bug
 
-### v1.0.0
+
+### v 1.1.0
+
+* 🐛 修复 bug
+
+### v 1.0.0
 
 - 初始版本发布
 - 支持文件上传、预览、合并
