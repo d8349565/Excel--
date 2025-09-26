@@ -161,7 +161,16 @@ function refreshResults() {
 }
 
 // 预览文件数据
-async function previewFile(filename) {
+// 全局变量用于分页
+let currentPage = 1;
+let currentPageSize = 100;
+let currentPreviewFilename = '';
+
+async function previewFile(filename, page = 1, pageSize = 100) {
+    currentPreviewFilename = filename;
+    currentPage = page;
+    currentPageSize = pageSize;
+    
     document.getElementById('previewFileName').textContent = filename;
     document.getElementById('previewContent').innerHTML = `
         <div class="loading">
@@ -171,10 +180,10 @@ async function previewFile(filename) {
     `;
     
     const modal = new bootstrap.Modal(document.getElementById('previewModal'));
-    modal.show();
+    if (page === 1) modal.show(); // 只在第一页时显示模态框
     
     try {
-        const response = await fetch(`/api/results/preview/${encodeURIComponent(filename)}`);
+        const response = await fetch(`/api/results/preview/${encodeURIComponent(filename)}?page=${page}&page_size=${pageSize}`);
         const data = await response.json();
         
         if (data.success) {
@@ -208,7 +217,34 @@ function renderPreviewTable(data) {
         return;
     }
     
+    // 分页信息
+    const pagination = data.total_pages > 1 ? `
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <div class="text-muted">
+                显示第 ${((data.page - 1) * data.page_size) + 1} - ${Math.min(data.page * data.page_size, data.total_rows)} 行，共 ${data.total_rows} 行数据
+            </div>
+            <nav>
+                <ul class="pagination pagination-sm mb-0">
+                    <li class="page-item ${data.page <= 1 ? 'disabled' : ''}">
+                        <a class="page-link" href="#" onclick="previewFile('${currentPreviewFilename}', ${data.page - 1}, ${data.page_size})">上一页</a>
+                    </li>
+                    <li class="page-item active">
+                        <span class="page-link">${data.page} / ${data.total_pages}</span>
+                    </li>
+                    <li class="page-item ${data.page >= data.total_pages ? 'disabled' : ''}">
+                        <a class="page-link" href="#" onclick="previewFile('${currentPreviewFilename}', ${data.page + 1}, ${data.page_size})">下一页</a>
+                    </li>
+                </ul>
+            </nav>
+        </div>
+    ` : `
+        <div class="text-muted mb-3">
+            共 ${data.total_rows} 行数据
+        </div>
+    `;
+    
     const table = `
+        ${pagination}
         <div class="table-responsive data-preview-table">
             <table class="table table-striped table-hover">
                 <thead class="table-dark">
@@ -217,7 +253,7 @@ function renderPreviewTable(data) {
                     </tr>
                 </thead>
                 <tbody>
-                    ${data.data.slice(0, 50).map(row => `
+                    ${data.data.map(row => `
                         <tr>
                             ${row.map(cell => `<td>${cell || ''}</td>`).join('')}
                         </tr>
@@ -225,9 +261,13 @@ function renderPreviewTable(data) {
                 </tbody>
             </table>
         </div>
-        <div class="mt-2 text-muted small">
-            显示前 ${Math.min(50, data.data.length)} 行，共 ${data.total_rows} 行数据
-        </div>
+        ${data.total_pages > 1 ? `
+            <div class="text-center">
+                <small class="text-muted">
+                    提示：预览模式分页显示，透视表和图表分析使用完整数据
+                </small>
+            </div>
+        ` : ''}
     `;
     
     document.getElementById('previewContent').innerHTML = table;
@@ -237,14 +277,17 @@ function renderPreviewTable(data) {
 async function showPivotModal(filename) {
     document.getElementById('pivotFileName').textContent = filename;
     
-    // 加载数据
+    // 加载完整数据用于透视分析
     try {
-        const response = await fetch(`/api/results/preview/${encodeURIComponent(filename)}`);
+        const response = await fetch(`/api/results/preview/${encodeURIComponent(filename)}?show_all=true`);
         const data = await response.json();
         
         if (data.success) {
             currentPreviewData = data.data;
             renderPivotFields(data.data.columns);
+            
+            // 显示数据加载信息
+            console.log(`透视分析：已加载 ${data.data.total_rows} 行完整数据`);
             
             const modal = new bootstrap.Modal(document.getElementById('pivotModal'));
             modal.show();
@@ -847,14 +890,17 @@ function updateSortIcons() {
 async function showChartModal(filename) {
     document.getElementById('chartFileName').textContent = filename;
     
-    // 加载数据
+    // 加载完整数据用于可视化分析
     try {
-        const response = await fetch(`/api/results/preview/${encodeURIComponent(filename)}`);
+        const response = await fetch(`/api/results/preview/${encodeURIComponent(filename)}?show_all=true`);
         const data = await response.json();
         
         if (data.success) {
             currentPreviewData = data.data;
             renderChartFields(data.data.columns);
+            
+            // 显示数据加载信息
+            console.log(`可视化分析：已加载 ${data.data.total_rows} 行完整数据`);
             
             const modal = new bootstrap.Modal(document.getElementById('chartModal'));
             modal.show();
@@ -1149,34 +1195,248 @@ async function batchDelete() {
 
 // 导出透视表
 function exportPivotData() {
-    // 这里可以实现导出透视表到Excel的功能
-    showInfo('导出透视表功能开发中...');
+    if (!window.currentPivotData) {
+        showError('请先生成透视表');
+        return;
+    }
+
+    // 显示导出选项模态框
+    showExportPivotModal();
+}
+
+// 显示导出透视表模态框
+function showExportPivotModal() {
+    // 创建模态框HTML（如果不存在）
+    if (!document.getElementById('exportPivotModal')) {
+        const modalHTML = `
+            <div class="modal fade" id="exportPivotModal" tabindex="-1">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">
+                                <i class="bi bi-download me-2"></i>导出透视表
+                            </h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="mb-3">
+                                <label class="form-label">导出格式</label>
+                                <select class="form-select" id="exportPivotFormat">
+                                    <option value="xlsx">Excel文件 (.xlsx) - 推荐</option>
+                                    <option value="csv">CSV文件 (.csv)</option>
+                                </select>
+                                <div class="form-text">
+                                    Excel格式将包含透视表、统计信息和原始数据样本；CSV格式仅包含透视表数据
+                                </div>
+                            </div>
+                            <div class="alert alert-info">
+                                <i class="bi bi-info-circle me-2"></i>
+                                <strong>导出内容：</strong>
+                                <ul class="mb-0 mt-2">
+                                    <li>透视表数据</li>
+                                    <li>字段配置和统计信息</li>
+                                    <li>原始数据样本（Excel格式）</li>
+                                </ul>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                            <button type="button" class="btn btn-primary" onclick="performPivotExport()">
+                                <i class="bi bi-download me-1"></i>开始导出
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+    }
+
+    // 显示模态框
+    const modal = new bootstrap.Modal(document.getElementById('exportPivotModal'));
+    modal.show();
+}
+
+// 执行透视表导出
+async function performPivotExport() {
+    const format = document.getElementById('exportPivotFormat').value;
+    const filename = document.getElementById('pivotFileName').textContent;
+    
+    if (!filename) {
+        showError('无法获取文件名');
+        return;
+    }
+
+    // 获取透视表配置
+    const rowFields = Array.from(document.getElementById('rowFields').children)
+        .filter(el => el.classList.contains('pivot-field'))
+        .map(el => el.dataset.field);
+    
+    const columnFields = Array.from(document.getElementById('columnFields').children)
+        .filter(el => el.classList.contains('pivot-field'))
+        .map(el => el.dataset.field);
+    
+    const valueFields = Array.from(document.getElementById('valueFields').children)
+        .filter(el => el.classList.contains('pivot-field'))
+        .map(el => el.dataset.field);
+    
+    const aggregation = document.getElementById('aggregationMethod').value;
+
+    // 显示加载状态
+    const exportBtn = document.querySelector('#exportPivotModal .btn-primary');
+    const originalText = exportBtn.innerHTML;
+    exportBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>导出中...';
+    exportBtn.disabled = true;
+
+    try {
+        const response = await fetch('/api/results/pivot/export', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                filename: filename,
+                row_fields: rowFields,
+                column_fields: columnFields,
+                value_fields: valueFields,
+                aggregation: aggregation,
+                format: format
+            })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            // 隐藏模态框
+            bootstrap.Modal.getInstance(document.getElementById('exportPivotModal')).hide();
+            
+            // 显示成功消息
+            showSuccess(`透视表导出成功！文件：${result.filename}`);
+            
+            // 自动下载文件
+            if (result.download_url) {
+                const link = document.createElement('a');
+                link.href = result.download_url;
+                link.download = result.filename;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            }
+            
+            // 刷新结果列表
+            setTimeout(() => {
+                loadResults();
+            }, 1000);
+            
+        } else {
+            showError('导出失败：' + result.message);
+        }
+    } catch (error) {
+        console.error('导出透视表失败:', error);
+        showError('导出失败，请稍后重试');
+    } finally {
+        // 恢复按钮状态
+        exportBtn.innerHTML = originalText;
+        exportBtn.disabled = false;
+    }
 }
 
 // 导出图表
 function exportChart() {
-    if (visualChart) {
+    if (!visualChart) {
+        showError('请先生成图表');
+        return;
+    }
+
+    try {
+        // 获取当前图表配置信息
+        const chartTitle = document.getElementById('visualFileName').textContent;
+        const chartType = document.getElementById('chartType').value;
+        const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+        const filename = `${chartTitle}_${chartType}_${timestamp}.png`;
+
+        // 导出为高质量PNG图片
         const link = document.createElement('a');
-        link.download = 'chart.png';
-        link.href = visualChart.toBase64Image();
+        link.download = filename;
+        link.href = visualChart.toBase64Image('image/png', 1.0); // 最高质量
+        
+        // 自动下载
+        document.body.appendChild(link);
         link.click();
+        document.body.removeChild(link);
+        
+        showSuccess(`图表导出成功：${filename}`);
+        
+    } catch (error) {
+        console.error('导出图表失败:', error);
+        showError('图表导出失败，请稍后重试');
     }
 }
 
 // 显示成功消息
 function showSuccess(message) {
-    // 可以使用 Bootstrap Toast 或其他通知组件
-    alert('成功: ' + message);
+    showToast(message, 'success');
 }
 
 // 显示错误消息
 function showError(message) {
-    alert('错误: ' + message);
+    showToast(message, 'danger');
 }
 
 // 显示信息
 function showInfo(message) {
-    alert('信息: ' + message);
+    showToast(message, 'info');
+}
+
+// 通用Toast显示函数
+function showToast(message, type = 'info') {
+    // 创建toast容器（如果不存在）
+    let toastContainer = document.getElementById('toastContainer');
+    if (!toastContainer) {
+        toastContainer = document.createElement('div');
+        toastContainer.id = 'toastContainer';
+        toastContainer.className = 'toast-container position-fixed top-0 end-0 p-3';
+        toastContainer.style.zIndex = '9999';
+        document.body.appendChild(toastContainer);
+    }
+
+    // 创建toast元素
+    const toastId = 'toast-' + Date.now();
+    const iconMap = {
+        'success': 'bi-check-circle-fill',
+        'danger': 'bi-exclamation-triangle-fill', 
+        'info': 'bi-info-circle-fill',
+        'warning': 'bi-exclamation-triangle-fill'
+    };
+    
+    const toastHTML = `
+        <div id="${toastId}" class="toast" role="alert">
+            <div class="toast-header">
+                <i class="bi ${iconMap[type]} me-2 text-${type}"></i>
+                <strong class="me-auto">系统消息</strong>
+                <button type="button" class="btn-close" data-bs-dismiss="toast"></button>
+            </div>
+            <div class="toast-body">
+                ${message}
+            </div>
+        </div>
+    `;
+    
+    toastContainer.insertAdjacentHTML('beforeend', toastHTML);
+    
+    // 显示toast
+    const toastElement = document.getElementById(toastId);
+    const toast = new bootstrap.Toast(toastElement, {
+        autohide: true,
+        delay: type === 'danger' ? 5000 : 3000  // 错误消息显示更久
+    });
+    
+    toast.show();
+    
+    // 自动清理DOM元素
+    toastElement.addEventListener('hidden.bs.toast', function() {
+        toastElement.remove();
+    });
 }
 
 // 处理拖拽离开事件

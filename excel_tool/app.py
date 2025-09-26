@@ -957,6 +957,11 @@ def create_app(config_name=None):
             session_id = get_session_id()
             safe_filename = secure_filename(filename)
             
+            # 获取分页参数
+            page = int(request.args.get('page', 1))
+            page_size = min(int(request.args.get('page_size', 1000)), 5000)  # 限制最大1000行，防止性能问题
+            show_all = request.args.get('show_all', 'false').lower() == 'true'
+            
             user_results_folder = file_manager.get_user_results_folder(session_id)
             file_path = os.path.join(user_results_folder, safe_filename)
             
@@ -970,23 +975,56 @@ def create_app(config_name=None):
             processor = DataProcessor()
             
             # 根据文件类型读取数据
-            if filename.lower().endswith('.xlsx'):
-                import pandas as pd
-                df = pd.read_excel(file_path, nrows=100)  # 只读取前100行用于预览
-            elif filename.lower().endswith('.csv'):
-                import pandas as pd
-                df = pd.read_csv(file_path, nrows=100, encoding='utf-8-sig')
+            import pandas as pd
+            
+            if show_all:
+                # 显示全部数据（用于透视表分析）
+                if filename.lower().endswith('.xlsx'):
+                    df = pd.read_excel(file_path)
+                elif filename.lower().endswith('.csv'):
+                    df = pd.read_csv(file_path, encoding='utf-8-sig')
+                else:
+                    return jsonify({
+                        'success': False,
+                        'message': '不支持的文件格式'
+                    }), 400
             else:
-                return jsonify({
-                    'success': False,
-                    'message': '不支持的文件格式'
-                }), 400
+                # 分页读取（用于预览显示）
+                if filename.lower().endswith('.xlsx'):
+                    # Excel文件先读取少量数据获取总行数
+                    df_sample = pd.read_excel(file_path, nrows=0)  # 只读取列名
+                    df_full = pd.read_excel(file_path)  # 读取全部数据用于计算总行数
+                    total_rows = len(df_full)
+                    
+                    # 计算分页
+                    start_row = (page - 1) * page_size
+                    end_row = start_row + page_size
+                    df = df_full.iloc[start_row:end_row]
+                    
+                elif filename.lower().endswith('.csv'):
+                    # CSV文件分页处理
+                    df_full = pd.read_csv(file_path, encoding='utf-8-sig')
+                    total_rows = len(df_full)
+                    
+                    start_row = (page - 1) * page_size
+                    end_row = start_row + page_size
+                    df = df_full.iloc[start_row:end_row]
+                else:
+                    return jsonify({
+                        'success': False,
+                        'message': '不支持的文件格式'
+                    }), 400
             
             # 转换为JSON格式
             data = {
                 'columns': df.columns.tolist(),
                 'data': df.fillna('').astype(str).values.tolist(),
-                'total_rows': len(df),
+                'current_rows': len(df),
+                'total_rows': len(df) if show_all else total_rows,
+                'page': page if not show_all else 1,
+                'page_size': page_size if not show_all else len(df),
+                'total_pages': max(1, (total_rows + page_size - 1) // page_size) if not show_all else 1,
+                'show_all': show_all,
                 'dtypes': {col: str(dtype) for col, dtype in df.dtypes.items()}
             }
             
@@ -1057,26 +1095,87 @@ def create_app(config_name=None):
                         'message': '必须指定值字段'
                     }), 400
                 
+                # 映射聚合函数
+                agg_func_mapping = {
+                    'sum': 'sum',
+                    'count': 'count',
+                    'avg': 'mean', 
+                    'mean': 'mean',
+                    'min': 'min',
+                    'max': 'max'
+                }
+                agg_func = agg_func_mapping.get(aggregation, 'sum')
+                
                 # 创建透视表
                 pivot_table = pd.pivot_table(
                     df, 
                     values=values, 
                     index=index, 
                     columns=columns, 
-                    aggfunc=aggregation,
+                    aggfunc=agg_func,
                     fill_value=0
                 )
                 
-                # 转换为JSON格式
-                pivot_data = {
-                    'index': pivot_table.index.tolist() if hasattr(pivot_table.index, 'tolist') else [str(pivot_table.index)],
-                    'columns': pivot_table.columns.tolist() if hasattr(pivot_table.columns, 'tolist') else [str(pivot_table.columns)],
-                    'data': pivot_table.values.tolist()
+                # 生成统计信息
+                stats = {
+                    'total_records': len(df),
+                    'pivot_rows': len(pivot_table.index) if hasattr(pivot_table, 'index') else 1,
+                    'pivot_columns': len(pivot_table.columns) if hasattr(pivot_table, 'columns') else 1,
+                    'aggregation_method': aggregation,
+                    'fields_used': {
+                        'row_fields': row_fields,
+                        'column_fields': column_fields,
+                        'value_fields': value_fields
+                    }
                 }
+                
+                # 计算数值统计
+                if hasattr(pivot_table, 'values'):
+                    values_flat = pivot_table.values.flatten()
+                    values_flat = values_flat[~pd.isna(values_flat)]
+                    if len(values_flat) > 0:
+                        stats['data_summary'] = {
+                            'min_value': float(values_flat.min()),
+                            'max_value': float(values_flat.max()),
+                            'sum_value': float(values_flat.sum()),
+                            'avg_value': float(values_flat.mean()),
+                            'non_zero_count': int((values_flat != 0).sum())
+                        }
+                
+                # 转换透视表为可序列化格式
+                if hasattr(pivot_table, 'index') and hasattr(pivot_table, 'columns'):
+                    # 多维透视表
+                    pivot_data = {
+                        'index': [str(idx) for idx in pivot_table.index.tolist()],
+                        'columns': [str(col) for col in pivot_table.columns.tolist()],
+                        'data': pivot_table.fillna(0).values.tolist(),
+                        'index_name': pivot_table.index.name or 'Index',
+                        'columns_name': pivot_table.columns.name or 'Columns'
+                    }
+                else:
+                    # 简单聚合结果
+                    if isinstance(pivot_table, pd.Series):
+                        pivot_data = {
+                            'index': [str(idx) for idx in pivot_table.index.tolist()],
+                            'columns': [values],
+                            'data': [[val] for val in pivot_table.fillna(0).values.tolist()],
+                            'index_name': pivot_table.index.name or row_fields[0] if row_fields else 'Index',
+                            'columns_name': values
+                        }
+                    else:
+                        # 单一值结果
+                        pivot_data = {
+                            'index': ['总计'],
+                            'columns': [values],
+                            'data': [[float(pivot_table) if pd.notna(pivot_table) else 0]],
+                            'index_name': 'Summary',
+                            'columns_name': values
+                        }
                 
                 return jsonify({
                     'success': True,
-                    'pivot_data': pivot_data
+                    'pivot_data': pivot_data,
+                    'stats': stats
                 })
                 
             except Exception as pivot_error:
@@ -1090,6 +1189,235 @@ def create_app(config_name=None):
             return jsonify({
                 'success': False,
                 'message': f'生成透视表失败: {str(e)}'
+            }), 500
+
+    @app.route('/api/results/pivot/export', methods=['POST'])
+    @login_required
+    def export_pivot_table():
+        """导出透视表API"""
+        try:
+            data = request.get_json()
+            filename = data.get('filename')
+            row_fields = data.get('row_fields', [])
+            column_fields = data.get('column_fields', [])
+            value_fields = data.get('value_fields', [])
+            aggregation = data.get('aggregation', 'sum')
+            export_format = data.get('format', 'xlsx')  # xlsx 或 csv
+            
+            if not filename or not value_fields:
+                return jsonify({
+                    'success': False,
+                    'message': '缺少必要参数'
+                }), 400
+            
+            session_id = get_session_id()
+            safe_filename = secure_filename(filename)
+            
+            user_results_folder = file_manager.get_user_results_folder(session_id)
+            file_path = os.path.join(user_results_folder, safe_filename)
+            
+            if not os.path.exists(file_path):
+                return jsonify({
+                    'success': False,
+                    'message': '文件不存在'
+                }), 404
+            
+            # 读取数据
+            import pandas as pd
+            if filename.lower().endswith('.xlsx'):
+                df = pd.read_excel(file_path)
+            elif filename.lower().endswith('.csv'):
+                df = pd.read_csv(file_path, encoding='utf-8-sig')
+            else:
+                return jsonify({
+                    'success': False,
+                    'message': '不支持的文件格式'
+                }), 400
+            
+            # 生成透视表
+            try:
+                # 数据清洗：确保数据质量
+                df = df.copy()  # 创建副本避免修改原始数据
+                
+                # 检查并清理字段名中的特殊字符
+                df.columns = [str(col).strip() for col in df.columns]
+                
+                # 清理数据：处理无限值和非数值
+                df = df.replace([float('inf'), float('-inf')], 0)
+                
+                index = row_fields if row_fields else None
+                columns = column_fields if column_fields else None
+                values = value_fields[0]
+                
+                # 确保值字段存在且为数值类型
+                if values not in df.columns:
+                    return jsonify({
+                        'success': False,
+                        'message': f'值字段 "{values}" 不存在'
+                    }), 400
+                
+                # 尝试将值字段转换为数值类型
+                try:
+                    df[values] = pd.to_numeric(df[values], errors='coerce')
+                    df[values] = df[values].fillna(0)  # 将无法转换的值设为0
+                except Exception as e:
+                    app.logger.warning(f"值字段转换警告: {e}")
+                
+                # 映射聚合函数
+                agg_func_mapping = {
+                    'sum': 'sum',
+                    'count': 'count',
+                    'avg': 'mean',
+                    'mean': 'mean',
+                    'min': 'min',
+                    'max': 'max'
+                }
+                agg_func = agg_func_mapping.get(aggregation, 'sum')
+                
+                # 创建透视表
+                pivot_table = pd.pivot_table(
+                    df,
+                    values=values,
+                    index=index,
+                    columns=columns,
+                    aggfunc=agg_func,
+                    fill_value=0,
+                    dropna=False  # 不删除包含NaN的行
+                )
+                
+                # 生成导出文件名 - 使用英文避免兼容性问题
+                base_name = os.path.splitext(safe_filename)[0]
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                export_filename = f"{base_name}_pivot_{timestamp}.{export_format}"
+                export_path = os.path.join(user_results_folder, export_filename)
+                
+                # 创建包含透视表和统计信息的完整报告
+                if export_format.lower() == 'xlsx':
+                    try:
+                        # 使用 ExcelWriter 创建多工作表的Excel文件，移除不兼容的选项
+                        with pd.ExcelWriter(export_path, engine='openpyxl') as writer:
+                            # 写入透视表
+                            if isinstance(pivot_table, pd.DataFrame):
+                                # 重置索引以包含行字段作为列
+                                pivot_df = pivot_table.reset_index()
+                                # 处理NaN值和数据类型
+                                pivot_df = pivot_df.fillna(0)  # 将NaN替换为0
+                                # 确保所有列名都是字符串
+                                pivot_df.columns = [str(col) for col in pivot_df.columns]
+                                # 确保数值列为数值类型
+                                for col in pivot_df.columns:
+                                    if pivot_df[col].dtype == 'object':
+                                        try:
+                                            pivot_df[col] = pd.to_numeric(pivot_df[col], errors='ignore')
+                                        except:
+                                            pass
+                                pivot_df.to_excel(writer, sheet_name='PivotTable', index=False)
+                            elif isinstance(pivot_table, pd.Series):
+                                # 转换Series为DataFrame
+                                pivot_df = pivot_table.reset_index()
+                                pivot_df.columns = [str(pivot_df.columns[0]), str(values)]
+                                pivot_df = pivot_df.fillna(0)  # 处理NaN值
+                                pivot_df.to_excel(writer, sheet_name='PivotTable', index=False)
+                            else:
+                                # 处理单一值的情况
+                                pivot_df = pd.DataFrame({
+                                    'Field': [str(values)],
+                                    'Value': [float(pivot_table) if pd.notna(pivot_table) else 0]
+                                })
+                                pivot_df.to_excel(writer, sheet_name='PivotTable', index=False)
+                            
+                            # 创建统计信息工作表
+                            stats_data = {
+                                'Item': [
+                                    'Source File', 'Total Records', 'Pivot Rows', 'Pivot Columns',
+                                    'Aggregation', 'Row Fields', 'Column Fields', 'Value Fields', 'Generated Time'
+                                ],
+                                'Value': [
+                                    str(filename),
+                                    str(len(df)),
+                                    str(len(pivot_table.index) if hasattr(pivot_table, 'index') else 1),
+                                    str(len(pivot_table.columns) if hasattr(pivot_table, 'columns') else 1),
+                                    str(aggregation),
+                                    ', '.join(row_fields) if row_fields else 'None',
+                                    ', '.join(column_fields) if column_fields else 'None',
+                                    ', '.join(value_fields),
+                                    datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                                ]
+                            }
+                            
+                            stats_df = pd.DataFrame(stats_data)
+                            stats_df.to_excel(writer, sheet_name='Statistics', index=False)
+                            
+                            # 写入完整的原始数据
+                            full_data_df = df.copy()
+                            # 处理原始数据中的问题值
+                            full_data_df = full_data_df.fillna('')  # 将NaN替换为空字符串
+                            # 确保列名为字符串
+                            full_data_df.columns = [str(col) for col in full_data_df.columns]
+                            # 转换所有列为字符串以避免类型问题
+                            for col in full_data_df.columns:
+                                try:
+                                    full_data_df[col] = full_data_df[col].astype(str)
+                                except:
+                                    full_data_df[col] = full_data_df[col].fillna('').astype(str)
+                            full_data_df.to_excel(writer, sheet_name='SourceData', index=False)
+                    
+                    except Exception as excel_error:
+                        app.logger.error(f"Excel文件创建失败: {excel_error}")
+                        # 如果Excel创建失败，尝试创建CSV作为备选
+                        csv_filename = export_filename.replace('.xlsx', '.csv')
+                        csv_path = os.path.join(user_results_folder, csv_filename)
+                        
+                        if isinstance(pivot_table, pd.DataFrame):
+                            pivot_df = pivot_table.reset_index().fillna(0)
+                        elif isinstance(pivot_table, pd.Series):
+                            pivot_df = pivot_table.reset_index()
+                            pivot_df.columns = [str(pivot_df.columns[0]), str(values)]
+                            pivot_df = pivot_df.fillna(0)
+                        else:
+                            pivot_df = pd.DataFrame({'Field': [str(values)], 'Value': [float(pivot_table) if pd.notna(pivot_table) else 0]})
+                        
+                        pivot_df.to_csv(csv_path, index=False, encoding='utf-8-sig')
+                        export_filename = csv_filename
+                        export_path = csv_path
+                        
+                elif export_format.lower() == 'csv':
+                    # CSV格式只能包含透视表数据
+                    if isinstance(pivot_table, pd.DataFrame):
+                        pivot_df = pivot_table.reset_index()
+                    elif isinstance(pivot_table, pd.Series):
+                        pivot_df = pivot_table.reset_index()
+                        pivot_df.columns = [pivot_df.columns[0], values]
+                    else:
+                        pivot_df = pd.DataFrame({'结果': [pivot_table]})
+                    
+                    pivot_df.to_csv(export_path, index=False, encoding='utf-8-sig')
+                
+                # 记录导出日志
+                user_logger.log_file_download(
+                    filename=export_filename,
+                    session_id=session_id
+                )
+                
+                return jsonify({
+                    'success': True,
+                    'message': '透视表导出成功',
+                    'filename': export_filename,
+                    'download_url': url_for('download_file', filename=export_filename)
+                })
+                
+            except Exception as export_error:
+                logging.error(f"导出透视表失败: {str(export_error)}")
+                return jsonify({
+                    'success': False,
+                    'message': f'导出透视表失败: {str(export_error)}'
+                }), 500
+            
+        except Exception as e:
+            logging.error(f"导出透视表失败: {str(e)}")
+            return jsonify({
+                'success': False,
+                'message': f'导出透视表失败: {str(e)}'
             }), 500
 
     @app.route('/api/results/chart-data', methods=['POST'])

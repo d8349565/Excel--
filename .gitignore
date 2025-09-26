@@ -28,7 +28,7 @@ env/
 ENV/
 .venv/
 .env/
-
+tasks_storage
 # IDEs
 .vscode/
 .idea/
