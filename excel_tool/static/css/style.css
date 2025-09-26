@@ -304,3 +304,526 @@ body {
     border-color: #007bff !important;
     background-color: rgba(0, 123, 255, 0.1) !important;
 }
+
+/* 结果页面样式 */
+.result-card {
+    transition: all 0.3s ease;
+    border-left: 4px solid transparent;
+}
+
+.result-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    border-left-color: #007bff;
+}
+
+.result-card.selected {
+    border-left-color: #28a745;
+    background-color: #f8fff8;
+    box-shadow: 0 2px 8px rgba(40, 167, 69, 0.2);
+}
+
+.file-size {
+    font-size: 0.9em;
+    color: #6c757d;
+    font-weight: 500;
+}
+
+.file-date {
+    font-size: 0.85em;
+    color: #adb5bd;
+}
+
+.batch-actions {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 25px;
+    border: 1px solid #dee2e6;
+    display: none;
+    animation: slideDown 0.3s ease;
+}
+
+.batch-actions.show {
+    display: block;
+}
+
+@keyframes slideDown {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.data-preview-table {
+    font-size: 0.85em;
+    max-height: 400px;
+    overflow: auto;
+    border-radius: 8px;
+    border: 1px solid #dee2e6;
+}
+
+.data-preview-table th {
+    position: sticky;
+    top: 0;
+    background-color: #343a40 !important;
+    z-index: 1;
+}
+
+.pivot-field {
+    border: 1px solid #ced4da;
+    border-radius: 6px;
+    padding: 8px 12px;
+    margin: 4px;
+    background: linear-gradient(135deg, #fff 0%, #f8f9fa 100%);
+    cursor: grab;
+    display: inline-block;
+    user-select: none;
+    transition: all 0.2s ease;
+    font-size: 0.9em;
+    font-weight: 500;
+}
+
+.pivot-field:hover {
+    background: linear-gradient(135deg, #e9ecef 0%, #f1f3f4 100%);
+    border-color: #007bff;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.pivot-field:active {
+    cursor: grabbing;
+}
+
+.pivot-field.dragging {
+    opacity: 0.6;
+    transform: rotate(5deg) scale(0.95);
+}
+
+.drop-zone {
+    min-height: 80px;
+    border: 2px dashed #ced4da;
+    border-radius: 12px;
+    padding: 20px;
+    text-align: center;
+    color: #6c757d;
+    transition: all 0.3s ease;
+    background: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.drop-zone.dragover {
+    border-color: #007bff;
+    background: rgba(0, 123, 255, 0.05);
+    color: #007bff;
+    transform: scale(1.02);
+}
+
+.drop-zone.has-fields {
+    border-style: solid;
+    background: #f8f9fa;
+    text-align: left;
+    justify-content: flex-start;
+    align-items: flex-start;
+}
+
+.chart-container {
+    min-height: 400px;
+    position: relative;
+    background: #fff;
+    border-radius: 8px;
+    padding: 20px;
+    border: 1px solid #e9ecef;
+}
+
+.field-list {
+    max-height: 250px;
+    overflow-y: auto;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    padding: 15px;
+    background: #fff;
+}
+
+.field-list::-webkit-scrollbar {
+    width: 6px;
+}
+
+.field-list::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 3px;
+}
+
+.field-list::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 3px;
+}
+
+.field-list::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+}
+
+.loading {
+    text-align: center;
+    padding: 60px 40px;
+    color: #6c757d;
+}
+
+.loading .spinner-border {
+    width: 3rem;
+    height: 3rem;
+}
+
+.no-results {
+    text-align: center;
+    padding: 80px 40px;
+    color: #adb5bd;
+}
+
+.no-results i {
+    font-size: 4rem;
+    margin-bottom: 20px;
+    color: #dee2e6;
+}
+
+.btn-group-sm > .btn {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+    border-radius: 4px;
+}
+
+.btn-group-sm > .btn:not(:last-child) {
+    margin-right: 2px;
+}
+
+/* 模态框增强样式 */
+.modal-xl {
+    max-width: 95%;
+}
+
+.modal-header {
+    background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+    color: white;
+    border-bottom: none;
+    border-radius: 0.5rem 0.5rem 0 0;
+}
+
+.modal-header .btn-close {
+    filter: invert(1) grayscale(100%) brightness(200%);
+}
+
+.modal-body {
+    padding: 2rem;
+}
+
+.modal-footer {
+    border-top: 1px solid #e9ecef;
+    background: #f8f9fa;
+    border-radius: 0 0 0.5rem 0.5rem;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+    .result-card .btn-group-sm {
+        flex-direction: column;
+    }
+    
+    .result-card .btn-group-sm > .btn {
+        width: 100%;
+        margin: 1px 0;
+    }
+    
+    .batch-actions .row {
+        text-align: center;
+    }
+    
+    .batch-actions .col-md-4 {
+        margin-bottom: 10px;
+    }
+    
+    .batch-actions .col-md-4:last-child {
+        margin-top: 10px;
+    }
+    
+    .modal-xl {
+        max-width: 98%;
+        margin: 0.5rem;
+    }
+    
+    .drop-zone {
+        min-height: 60px;
+        padding: 15px;
+    }
+    
+    .pivot-field {
+        margin: 2px;
+        padding: 6px 10px;
+        font-size: 0.85em;
+    }
+}
+
+/* 透视表和图表优化样式 */
+.alert-info {
+    border-left: 4px solid #0dcaf0;
+    background-color: #d1ecf1;
+    border-color: #b8daff;
+}
+
+.table-primary th {
+    background-color: #cce5ff !important;
+    border-color: #b3d9ff !important;
+    color: #004085 !important;
+}
+
+.table-primary th.fw-bold {
+    font-weight: 600 !important;
+}
+
+/* 透视表专用样式 */
+.pivot-table-container {
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    overflow: hidden;
+}
+
+.pivot-table-scroll {
+    max-height: 600px;
+    overflow: auto;
+}
+
+.pivot-table {
+    margin-bottom: 0;
+    font-size: 0.85rem;
+    table-layout: auto;
+}
+
+.pivot-table th.pivot-header {
+    background: linear-gradient(135deg, #007bff 0%, #0056b3 100%) !important;
+    color: white !important;
+    font-weight: 600 !important;
+    border: 1px solid #0056b3 !important;
+    padding: 8px 12px !important;
+    font-size: 0.8rem;
+    white-space: nowrap;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.pivot-header.row-header {
+    background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%) !important;
+    min-width: 120px;
+    max-width: 200px;
+}
+
+.pivot-header.column-group-header {
+    background: linear-gradient(135deg, #17a2b8 0%, #138496 100%) !important;
+    text-align: center !important;
+}
+
+.pivot-header.value-header {
+    background: linear-gradient(135deg, #ffc107 0%, #e0a800 100%) !important;
+    color: #212529 !important;
+    min-width: 100px;
+}
+
+.pivot-header.value-subheader {
+    background: linear-gradient(135deg, #fd7e14 0%, #e55a00 100%) !important;
+    color: white !important;
+    font-size: 0.75rem;
+    min-width: 100px;
+}
+
+.pivot-header.row-header-spacer {
+    background: transparent !important;
+    border: none !important;
+}
+
+.pivot-cell {
+    padding: 6px 8px !important;
+    border: 1px solid #dee2e6 !important;
+    font-size: 0.8rem;
+}
+
+.pivot-cell.row-cell {
+    background-color: #f8f9fa;
+    font-weight: 500;
+    border-left: 3px solid #28a745 !important;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pivot-cell.data-cell {
+    min-width: 80px;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-weight: 500;
+}
+
+.pivot-cell.high-value {
+    background-color: #d1ecf1 !important;
+    color: #0c5460 !important;
+    font-weight: 600;
+}
+
+.pivot-cell.medium-value {
+    background-color: #d4edda !important;
+    color: #155724 !important;
+}
+
+.pivot-cell.low-value {
+    background-color: #fff3cd !important;
+    color: #856404 !important;
+}
+
+/* 数据统计卡片样式 */
+.stat-item {
+    text-align: center;
+    padding: 8px;
+    border-radius: 6px;
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border: 1px solid #dee2e6;
+    transition: all 0.2s ease;
+}
+
+.stat-item:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+}
+
+.stat-label {
+    font-size: 0.7rem;
+    color: #6c757d;
+    font-weight: 500;
+    margin-bottom: 2px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.stat-value {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #212529;
+    line-height: 1.2;
+    word-break: break-all;
+}
+
+/* 紧凑的卡片设计 */
+.card-header {
+    border-radius: 8px 8px 0 0 !important;
+}
+
+.card-body {
+    padding: 1rem !important;
+}
+
+/* 滚动条美化 */
+.pivot-table-scroll::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+.pivot-table-scroll::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+.pivot-table-scroll::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 4px;
+}
+
+.pivot-table-scroll::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+}
+
+.pivot-table-scroll::-webkit-scrollbar-corner {
+    background: #f1f1f1;
+}
+
+/* 紧凑的字段列表和拖放区域 */
+.compact-field-list {
+    max-height: 150px;
+    padding: 8px;
+    font-size: 0.8rem;
+}
+
+.compact-field-list .pivot-field {
+    padding: 4px 8px;
+    margin: 2px;
+    font-size: 0.75rem;
+}
+
+.compact-drop-zone {
+    min-height: 50px;
+    padding: 8px;
+    font-size: 0.8rem;
+    border-radius: 6px;
+}
+
+.compact-drop-zone.has-fields {
+    padding: 4px;
+}
+
+.compact-drop-zone .pivot-field {
+    padding: 4px 8px;
+    margin: 2px;
+    font-size: 0.75rem;
+}
+
+.compact-drop-zone .pivot-field button {
+    font-size: 0.7rem;
+    padding: 1px 4px;
+    margin-left: 4px;
+}
+
+/* 透视表结果容器 */
+.pivot-result-container {
+    min-height: 400px;
+    max-height: 600px;
+    overflow: auto;
+}
+
+/* 模态框内的卡片优化 */
+.modal-body .card {
+    border: 1px solid #e9ecef;
+    box-shadow: none;
+}
+
+.modal-body .card-header {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border-bottom: 1px solid #dee2e6;
+    font-size: 0.9rem;
+}
+
+.modal-body .card-body {
+    background: #fff;
+}
+
+/* 字段配置区域的表单控件 */
+.modal-body .form-label.small {
+    font-size: 0.8rem;
+    margin-bottom: 4px;
+}
+
+.modal-body .form-select-sm {
+    font-size: 0.8rem;
+    padding: 4px 8px;
+}
+
+.modal-body .btn-sm {
+    font-size: 0.8rem;
+    padding: 6px 12px;
+}
+
+/* 批量操作按钮组优化 */
+.batch-actions .btn-group-sm {
+    gap: 5px;
+}
+
+.batch-actions .col-md-4 .btn {
+    margin: 0 2px;
+}

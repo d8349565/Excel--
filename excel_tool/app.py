@@ -42,6 +42,17 @@ def get_session_id():
         session['session_id'] = str(uuid.uuid4())
     return session['session_id']
 
+def format_file_size(size_bytes):
+    """格式化文件大小"""
+    if size_bytes == 0:
+        return "0B"
+    size_names = ["B", "KB", "MB", "GB"]
+    import math
+    i = int(math.floor(math.log(size_bytes, 1024)))
+    p = math.pow(1024, i)
+    s = round(size_bytes / p, 2)
+    return f"{s} {size_names[i]}"
+
 def create_app(config_name=None):
     """创建Flask应用实例"""
     app = Flask(__name__)
@@ -839,6 +850,334 @@ def create_app(config_name=None):
             'logs': logs,
             'total': len(logs)
         })
+
+    @app.route('/results')
+    @login_required
+    def results_page():
+        """结果管理页面"""
+        return render_template('results.html')
+
+    @app.route('/api/results')
+    @login_required
+    def api_results():
+        """获取处理结果列表API"""
+        try:
+            session_id = get_session_id()
+            user_results_folder = file_manager.get_user_results_folder(session_id)
+            
+            results = []
+            if os.path.exists(user_results_folder):
+                for filename in os.listdir(user_results_folder):
+                    file_path = os.path.join(user_results_folder, filename)
+                    if os.path.isfile(file_path) and filename.endswith(('.xlsx', '.csv')):
+                        stat = os.stat(file_path)
+                        results.append({
+                            'id': filename.replace('.', '_'),  # 用于DOM ID
+                            'filename': filename,
+                            'size': stat.st_size,
+                            'size_formatted': format_file_size(stat.st_size),
+                            'created_time': datetime.fromtimestamp(stat.st_ctime).strftime('%Y-%m-%d %H:%M:%S'),
+                            'modified_time': datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')
+                        })
+            
+            # 按修改时间降序排列
+            results.sort(key=lambda x: x['modified_time'], reverse=True)
+            
+            return jsonify({
+                'success': True,
+                'results': results
+            })
+            
+        except Exception as e:
+            logging.error(f"获取结果列表失败: {str(e)}")
+            return jsonify({
+                'success': False,
+                'message': '获取结果列表失败'
+            }), 500
+
+    @app.route('/api/results/delete', methods=['POST'])
+    @login_required
+    def delete_results():
+        """批量删除结果文件API"""
+        try:
+            data = request.get_json()
+            filenames = data.get('filenames', [])
+            
+            if not filenames:
+                return jsonify({
+                    'success': False,
+                    'message': '未选择要删除的文件'
+                }), 400
+            
+            session_id = get_session_id()
+            user_results_folder = file_manager.get_user_results_folder(session_id)
+            
+            deleted_files = []
+            failed_files = []
+            
+            for filename in filenames:
+                try:
+                    safe_filename = secure_filename(filename)
+                    file_path = os.path.join(user_results_folder, safe_filename)
+                    
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+                        deleted_files.append(filename)
+                        
+                        # 记录删除日志
+                        user_logger.log_file_delete(
+                            filename=filename,
+                            session_id=session_id
+                        )
+                    else:
+                        failed_files.append(f"{filename} (文件不存在)")
+                        
+                except Exception as e:
+                    failed_files.append(f"{filename} ({str(e)})")
+            
+            return jsonify({
+                'success': True,
+                'deleted': deleted_files,
+                'failed': failed_files,
+                'message': f'成功删除 {len(deleted_files)} 个文件'
+            })
+            
+        except Exception as e:
+            logging.error(f"批量删除文件失败: {str(e)}")
+            return jsonify({
+                'success': False,
+                'message': '删除文件失败'
+            }), 500
+
+    @app.route('/api/results/preview/<filename>')
+    @login_required
+    def preview_result_data(filename):
+        """预览结果文件数据API"""
+        try:
+            session_id = get_session_id()
+            safe_filename = secure_filename(filename)
+            
+            user_results_folder = file_manager.get_user_results_folder(session_id)
+            file_path = os.path.join(user_results_folder, safe_filename)
+            
+            if not os.path.exists(file_path):
+                return jsonify({
+                    'success': False,
+                    'message': '文件不存在'
+                }), 404
+            
+            # 使用数据处理器读取文件
+            processor = DataProcessor()
+            
+            # 根据文件类型读取数据
+            if filename.lower().endswith('.xlsx'):
+                import pandas as pd
+                df = pd.read_excel(file_path, nrows=100)  # 只读取前100行用于预览
+            elif filename.lower().endswith('.csv'):
+                import pandas as pd
+                df = pd.read_csv(file_path, nrows=100, encoding='utf-8-sig')
+            else:
+                return jsonify({
+                    'success': False,
+                    'message': '不支持的文件格式'
+                }), 400
+            
+            # 转换为JSON格式
+            data = {
+                'columns': df.columns.tolist(),
+                'data': df.fillna('').astype(str).values.tolist(),
+                'total_rows': len(df),
+                'dtypes': {col: str(dtype) for col, dtype in df.dtypes.items()}
+            }
+            
+            return jsonify({
+                'success': True,
+                'data': data
+            })
+            
+        except Exception as e:
+            logging.error(f"预览结果文件失败: {filename}, 错误: {str(e)}")
+            return jsonify({
+                'success': False,
+                'message': f'预览文件失败: {str(e)}'
+            }), 500
+
+    @app.route('/api/results/pivot', methods=['POST'])
+    @login_required
+    def generate_pivot_table():
+        """生成数据透视表API"""
+        try:
+            data = request.get_json()
+            filename = data.get('filename')
+            row_fields = data.get('row_fields', [])
+            column_fields = data.get('column_fields', [])
+            value_fields = data.get('value_fields', [])
+            aggregation = data.get('aggregation', 'sum')
+            
+            if not filename:
+                return jsonify({
+                    'success': False,
+                    'message': '缺少文件名参数'
+                }), 400
+            
+            session_id = get_session_id()
+            safe_filename = secure_filename(filename)
+            
+            user_results_folder = file_manager.get_user_results_folder(session_id)
+            file_path = os.path.join(user_results_folder, safe_filename)
+            
+            if not os.path.exists(file_path):
+                return jsonify({
+                    'success': False,
+                    'message': '文件不存在'
+                }), 404
+            
+            # 读取完整数据用于透视分析
+            import pandas as pd
+            if filename.lower().endswith('.xlsx'):
+                df = pd.read_excel(file_path)
+            elif filename.lower().endswith('.csv'):
+                df = pd.read_csv(file_path, encoding='utf-8-sig')
+            else:
+                return jsonify({
+                    'success': False,
+                    'message': '不支持的文件格式'
+                }), 400
+            
+            # 生成透视表
+            try:
+                # 构建透视表
+                index = row_fields if row_fields else None
+                columns = column_fields if column_fields else None
+                values = value_fields[0] if value_fields else None
+                
+                if not values:
+                    return jsonify({
+                        'success': False,
+                        'message': '必须指定值字段'
+                    }), 400
+                
+                # 创建透视表
+                pivot_table = pd.pivot_table(
+                    df, 
+                    values=values, 
+                    index=index, 
+                    columns=columns, 
+                    aggfunc=aggregation,
+                    fill_value=0
+                )
+                
+                # 转换为JSON格式
+                pivot_data = {
+                    'index': pivot_table.index.tolist() if hasattr(pivot_table.index, 'tolist') else [str(pivot_table.index)],
+                    'columns': pivot_table.columns.tolist() if hasattr(pivot_table.columns, 'tolist') else [str(pivot_table.columns)],
+                    'data': pivot_table.values.tolist()
+                }
+                
+                return jsonify({
+                    'success': True,
+                    'pivot_data': pivot_data
+                })
+                
+            except Exception as pivot_error:
+                return jsonify({
+                    'success': False,
+                    'message': f'生成透视表失败: {str(pivot_error)}'
+                }), 500
+            
+        except Exception as e:
+            logging.error(f"生成透视表失败: {str(e)}")
+            return jsonify({
+                'success': False,
+                'message': f'生成透视表失败: {str(e)}'
+            }), 500
+
+    @app.route('/api/results/chart-data', methods=['POST'])
+    @login_required
+    def generate_chart_data():
+        """生成图表数据API"""
+        try:
+            data = request.get_json()
+            filename = data.get('filename')
+            x_field = data.get('x_field')
+            y_field = data.get('y_field')
+            chart_type = data.get('chart_type', 'bar')
+            aggregation = data.get('aggregation', 'sum')
+            
+            if not all([filename, x_field, y_field]):
+                return jsonify({
+                    'success': False,
+                    'message': '缺少必要参数'
+                }), 400
+            
+            session_id = get_session_id()
+            safe_filename = secure_filename(filename)
+            
+            user_results_folder = file_manager.get_user_results_folder(session_id)
+            file_path = os.path.join(user_results_folder, safe_filename)
+            
+            if not os.path.exists(file_path):
+                return jsonify({
+                    'success': False,
+                    'message': '文件不存在'
+                }), 404
+            
+            # 读取数据
+            import pandas as pd
+            if filename.lower().endswith('.xlsx'):
+                df = pd.read_excel(file_path)
+            elif filename.lower().endswith('.csv'):
+                df = pd.read_csv(file_path, encoding='utf-8-sig')
+            else:
+                return jsonify({
+                    'success': False,
+                    'message': '不支持的文件格式'
+                }), 400
+            
+            # 检查字段是否存在
+            if x_field not in df.columns or y_field not in df.columns:
+                return jsonify({
+                    'success': False,
+                    'message': '指定的字段不存在'
+                }), 400
+            
+            # 生成图表数据
+            try:
+                # 按x字段分组，对y字段进行聚合
+                agg_func = aggregation if aggregation in ['sum', 'count', 'mean', 'min', 'max'] else 'sum'
+                if agg_func == 'avg':
+                    agg_func = 'mean'
+                    
+                grouped = df.groupby(x_field)[y_field].agg(agg_func).reset_index()
+                
+                chart_data = {
+                    'labels': grouped[x_field].astype(str).tolist(),
+                    'datasets': [{
+                        'label': f'{y_field} ({aggregation})',
+                        'data': grouped[y_field].tolist(),
+                        'backgroundColor': 'rgba(54, 162, 235, 0.2)',
+                        'borderColor': 'rgba(54, 162, 235, 1)',
+                        'borderWidth': 1
+                    }]
+                }
+                
+                return jsonify({
+                    'success': True,
+                    'chart_data': chart_data
+                })
+                
+            except Exception as chart_error:
+                return jsonify({
+                    'success': False,
+                    'message': f'生成图表数据失败: {str(chart_error)}'
+                }), 500
+            
+        except Exception as e:
+            logging.error(f"生成图表数据失败: {str(e)}")
+            return jsonify({
+                'success': False,
+                'message': f'生成图表数据失败: {str(e)}'
+            }), 500
     
     # 错误处理
     @app.errorhandler(404)
