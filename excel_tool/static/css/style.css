@@ -641,6 +641,117 @@ body {
     border: none !important;
 }
 
+/* 可排序表头样式 */
+.pivot-header.sortable {
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.2s ease;
+    position: relative;
+}
+
+.pivot-header.sortable:hover {
+    background: linear-gradient(135deg, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0.1) 100%) !important;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.pivot-header.sortable:active {
+    transform: translateY(0);
+}
+
+.sort-icon {
+    font-size: 0.7rem;
+    margin-left: 4px;
+    opacity: 0.6;
+    transition: all 0.2s ease;
+}
+
+.sortable:hover .sort-icon {
+    opacity: 1;
+}
+
+.sort-icon.active {
+    opacity: 1;
+    color: #ffc107 !important;
+    filter: drop-shadow(0 0 2px rgba(255, 193, 7, 0.5));
+}
+
+/* 排序时的动画效果 */
+.pivot-table tbody {
+    transition: all 0.3s ease;
+}
+
+.pivot-cell {
+    transition: background-color 0.2s ease;
+}
+
+/* 排序指示器 */
+.pivot-header.sortable::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: transparent;
+    transition: background-color 0.2s ease;
+}
+
+.pivot-header.sortable:hover::before {
+    background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.5) 50%, transparent 100%);
+}
+
+/* 排序提示样式 */
+.text-muted small {
+    font-size: 0.7rem;
+    opacity: 0.8;
+}
+
+/* 增强排序状态的视觉反馈 */
+.pivot-header.sortable[data-sorted="true"] {
+    background: linear-gradient(135deg, rgba(255, 193, 7, 0.2) 0%, rgba(255, 193, 7, 0.1) 100%) !important;
+    box-shadow: inset 0 0 0 1px rgba(255, 193, 7, 0.3);
+}
+
+/* 排序加载动画 */
+@keyframes sortAnimation {
+    0% { opacity: 0.5; transform: translateY(0); }
+    50% { opacity: 0.8; transform: translateY(-1px); }
+    100% { opacity: 1; transform: translateY(0); }
+}
+
+.pivot-table tbody.sorting {
+    animation: sortAnimation 0.3s ease;
+}
+
+/* 表头工具提示增强 */
+.pivot-header.sortable {
+    position: relative;
+}
+
+.pivot-header.sortable:hover::after {
+    content: '点击排序';
+    position: absolute;
+    bottom: -25px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    white-space: nowrap;
+    z-index: 1000;
+    pointer-events: none;
+    opacity: 0;
+    animation: fadeInTooltip 0.2s ease forwards;
+}
+
+@keyframes fadeInTooltip {
+    from { opacity: 0; transform: translateX(-50%) translateY(2px); }
+    to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
 .pivot-cell {
     padding: 6px 8px !important;
     border: 1px solid #dee2e6 !important;

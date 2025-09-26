@@ -345,6 +345,10 @@ function clearPivotFields() {
         element.classList.remove('has-fields');
     });
     
+    // 重置排序状态
+    window.currentPivotData = null;
+    window.currentSortConfig = { column: null, direction: 'asc' };
+    
     // 重置结果显示区域
     document.getElementById('pivotResult').innerHTML = `
         <div class="text-center py-5 text-muted">
@@ -455,6 +459,10 @@ function calculatePivot(data, rowFields, columnFields, valueFields, aggregation)
 // 渲染透视表
 function renderPivotTable(pivotData) {
     const { result, allColumns, rowFields, columnFields, valueFields } = pivotData;
+    
+    // 将数据存储到全局变量以便排序使用
+    window.currentPivotData = pivotData;
+    window.currentSortConfig = { column: null, direction: 'asc' };
     
     // 计算汇总统计信息
     const totalRows = Object.keys(result).length;
@@ -574,26 +582,32 @@ function renderPivotTable(pivotData) {
     let html = description + `
         <div class="pivot-table-container">
             <div class="table-responsive pivot-table-scroll">
-                <table class="table table-striped table-hover table-sm pivot-table">
+                <table class="table table-striped table-hover table-sm pivot-table" id="pivotTable">
     `;
     
-    // 表头 - 使用主题色和紧凑设计
+    // 表头 - 使用主题色和紧凑设计，添加排序功能
     html += '<thead class="table-primary sticky-top">';
     
     // 主表头行
     html += '<tr>';
-    rowFields.forEach(field => {
-        html += `<th class="pivot-header row-header">${field}</th>`;
+    rowFields.forEach((field, index) => {
+        const sortIcon = getSortIcon('row', index);
+        html += `<th class="pivot-header row-header sortable" onclick="sortPivotTable('row', ${index})" title="点击排序">
+            ${field} ${sortIcon}
+        </th>`;
     });
     
     // 为列字段创建分组表头
     if (columnFields.length > 0) {
-        allColumns.forEach(col => {
+        allColumns.forEach((col, colIndex) => {
             html += `<th colspan="${valueFields.length}" class="pivot-header column-group-header text-center">${col || '空值'}</th>`;
         });
     } else {
-        valueFields.forEach(valueField => {
-            html += `<th class="pivot-header value-header">${valueField}</th>`;
+        valueFields.forEach((valueField, valueIndex) => {
+            const sortIcon = getSortIcon('value', valueIndex);
+            html += `<th class="pivot-header value-header sortable" onclick="sortPivotTable('value', ${valueIndex})" title="点击排序">
+                ${valueField} ${sortIcon}
+            </th>`;
         });
     }
     html += '</tr>';
@@ -604,9 +618,12 @@ function renderPivotTable(pivotData) {
         rowFields.forEach(() => {
             html += '<th class="pivot-header row-header-spacer"></th>';
         });
-        allColumns.forEach(() => {
-            valueFields.forEach(valueField => {
-                html += `<th class="pivot-header value-subheader">${valueField}</th>`;
+        allColumns.forEach((col, colIndex) => {
+            valueFields.forEach((valueField, valueIndex) => {
+                const sortIcon = getSortIcon('value', `${colIndex}_${valueIndex}`);
+                html += `<th class="pivot-header value-subheader sortable" onclick="sortPivotTable('value', '${colIndex}_${valueIndex}')" title="点击排序">
+                    ${valueField} ${sortIcon}
+                </th>`;
             });
         });
         html += '</tr>';
@@ -615,7 +632,16 @@ function renderPivotTable(pivotData) {
     html += '</thead>';
     
     // 表体 - 优化数据显示
-    html += '<tbody>';
+    html += '<tbody id="pivotTableBody">';
+    html += renderPivotTableBody(result, allColumns, rowFields, valueFields, aggregationMethod, avgValue, maxValue);
+    html += '</tbody></table></div></div>';
+    
+    document.getElementById('pivotResult').innerHTML = html;
+}
+
+// 渲染透视表表体
+function renderPivotTableBody(result, allColumns, rowFields, valueFields, aggregationMethod, avgValue, maxValue) {
+    let html = '';
     Object.keys(result).forEach((rowKey, index) => {
         const rowClass = index % 2 === 0 ? '' : 'table-light';
         html += `<tr class="${rowClass}">`;
@@ -660,9 +686,161 @@ function renderPivotTable(pivotData) {
         });
         html += '</tr>';
     });
-    html += '</tbody></table></div></div>';
+    return html;
+}
+
+// 获取排序图标
+function getSortIcon(type, index) {
+    if (!window.currentSortConfig) return '<i class="bi bi-arrow-down-up sort-icon"></i>';
     
-    document.getElementById('pivotResult').innerHTML = html;
+    const currentSort = window.currentSortConfig;
+    const columnKey = `${type}_${index}`;
+    
+    if (currentSort.column === columnKey) {
+        if (currentSort.direction === 'asc') {
+            return '<i class="bi bi-sort-up sort-icon active"></i>';
+        } else {
+            return '<i class="bi bi-sort-down sort-icon active"></i>';
+        }
+    }
+    return '<i class="bi bi-arrow-down-up sort-icon"></i>';
+}
+
+// 透视表排序功能
+function sortPivotTable(type, index) {
+    if (!window.currentPivotData) return;
+    
+    const columnKey = `${type}_${index}`;
+    let direction = 'asc';
+    
+    // 如果点击的是同一列，切换排序方向
+    if (window.currentSortConfig.column === columnKey) {
+        direction = window.currentSortConfig.direction === 'asc' ? 'desc' : 'asc';
+    }
+    
+    window.currentSortConfig = { column: columnKey, direction };
+    
+    const { result, allColumns, rowFields, columnFields, valueFields } = window.currentPivotData;
+    const aggregationMethod = document.getElementById('aggregationMethod').value;
+    
+    // 将数据转换为数组以便排序
+    const dataArray = Object.keys(result).map(rowKey => {
+        const rowData = { rowKey, rowValues: rowKey.split('|'), data: result[rowKey] };
+        return rowData;
+    });
+    
+    // 执行排序
+    dataArray.sort((a, b) => {
+        let valueA, valueB;
+        
+        if (type === 'row') {
+            // 按行字段排序
+            valueA = a.rowValues[index] || '';
+            valueB = b.rowValues[index] || '';
+            
+            // 尝试数值比较
+            const numA = parseFloat(valueA);
+            const numB = parseFloat(valueB);
+            
+            if (!isNaN(numA) && !isNaN(numB)) {
+                valueA = numA;
+                valueB = numB;
+            } else {
+                valueA = valueA.toString().toLowerCase();
+                valueB = valueB.toString().toLowerCase();
+            }
+        } else if (type === 'value') {
+            // 按值字段排序
+            if (typeof index === 'string' && index.includes('_')) {
+                // 复合列（有列字段的情况）
+                const [colIndex, valueIndex] = index.split('_');
+                const col = allColumns[colIndex];
+                const valueField = valueFields[valueIndex];
+                const key = col + '|' + valueField;
+                
+                valueA = a.data[key] || 0;
+                valueB = b.data[key] || 0;
+            } else {
+                // 简单值字段
+                const valueField = valueFields[index];
+                const firstCol = allColumns[0] || '';
+                const key = firstCol + '|' + valueField;
+                
+                valueA = a.data[key] || 0;
+                valueB = b.data[key] || 0;
+            }
+        }
+        
+        if (typeof valueA === 'number' && typeof valueB === 'number') {
+            return direction === 'asc' ? valueA - valueB : valueB - valueA;
+        } else {
+            if (valueA < valueB) return direction === 'asc' ? -1 : 1;
+            if (valueA > valueB) return direction === 'asc' ? 1 : -1;
+            return 0;
+        }
+    });
+    
+    // 重建结果对象
+    const sortedResult = {};
+    dataArray.forEach(item => {
+        sortedResult[item.rowKey] = item.data;
+    });
+    
+    // 计算统计值用于重新渲染
+    let grandTotal = 0;
+    let totalCells = 0;
+    let minValue = Infinity;
+    let maxValue = -Infinity;
+    
+    Object.keys(sortedResult).forEach(rowKey => {
+        allColumns.forEach(col => {
+            valueFields.forEach(valueField => {
+                const key = col + '|' + valueField;
+                const value = sortedResult[rowKey][key] || 0;
+                if (typeof value === 'number' && !isNaN(value)) {
+                    grandTotal += value;
+                    totalCells++;
+                    minValue = Math.min(minValue, value);
+                    maxValue = Math.max(maxValue, value);
+                }
+            });
+        });
+    });
+    
+    const avgValue = totalCells > 0 ? grandTotal / totalCells : 0;
+    
+    // 只更新表体和表头的排序图标
+    const tableBody = document.getElementById('pivotTableBody');
+    if (tableBody) {
+        tableBody.innerHTML = renderPivotTableBody(sortedResult, allColumns, rowFields, valueFields, aggregationMethod, avgValue, maxValue);
+    }
+    
+    // 更新表头的排序图标
+    updateSortIcons();
+}
+
+// 更新排序图标
+function updateSortIcons() {
+    document.querySelectorAll('.sortable').forEach((header, index) => {
+        const onclick = header.getAttribute('onclick');
+        if (onclick) {
+            // 提取排序参数
+            const match = onclick.match(/sortPivotTable\('(\w+)', (.+?)\)/);
+            if (match) {
+                const type = match[1];
+                const idx = match[2].replace(/'/g, '');
+                const icon = getSortIcon(type, idx);
+                
+                // 更新图标
+                const existingIcon = header.querySelector('.sort-icon');
+                if (existingIcon) {
+                    const iconElement = document.createElement('div');
+                    iconElement.innerHTML = icon;
+                    header.replaceChild(iconElement.firstChild, existingIcon);
+                }
+            }
+        }
+    });
 }
 
 // 显示图表模态框
