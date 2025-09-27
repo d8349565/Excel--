@@ -1720,5 +1720,11 @@ def cleanup_old_results(app, retention_days: int = 1):
         app.logger.error(f"清理结果文件时出错: {e}")
 
 if __name__ == '__main__':
+    # 从环境变量读取配置，如果没有则使用默认值
+    # 保持与原来的默认行为兼容
+    host = os.environ.get('SERVER_HOST', '0.0.0.0')  # 修正回原来的默认值
+    port = int(os.environ.get('SERVER_PORT', '5000'))
+    debug = os.environ.get('SERVER_DEBUG', 'False').lower() == 'true'
+    
     app = create_app()
-    app.run(debug=False, host='0.0.0.0', port=5000)
+    app.run(debug=debug, host=host, port=port)

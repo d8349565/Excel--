@@ -9,3 +9,5 @@ Jinja2
 click
 itsdangerous
 MarkupSafe
+wxPython
+requests

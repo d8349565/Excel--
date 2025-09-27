@@ -22,26 +22,26 @@ class Config:
     RESULTS_FOLDER = os.path.join(BASE_DIR, 'results')
     LOGS_FOLDER = os.path.join(BASE_DIR, 'logs')
     
-    # 单文件大小限制
-    MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB
+    # 单文件大小限制 - 支持环境变量动态配置
+    MAX_FILE_SIZE = int(os.environ.get('MAX_FILE_SIZE_MB', '100')) * 1024 * 1024  # 默认100MB
     
     # 支持的文件类型
     ALLOWED_EXTENSIONS = {'xlsx', 'xls', 'csv'}
     
-    # 预览配置
-    DEFAULT_PREVIEW_ROWS = 50
+    # 预览配置 - 支持环境变量动态配置
+    DEFAULT_PREVIEW_ROWS = int(os.environ.get('DEFAULT_PREVIEW_ROWS', '50'))
     MAX_PREVIEW_ROWS = 200
     
     # 数据处理配置
     MAX_ERROR_SAMPLES = 100  # 最多显示错误样例数
     DEFAULT_HEADER_ROW = 1   # 默认表头行
     
-    # 任务配置
-    MAX_CONCURRENT_TASKS = 5  # 最大并发任务数（支持多用户）
+    # 任务配置 - 支持环境变量动态配置
+    MAX_CONCURRENT_TASKS = int(os.environ.get('MAX_CONCURRENT_TASKS', '5'))  # 最大并发任务数（支持多用户）
     TASK_TIMEOUT = 3600      # 任务超时时间（秒）
     
-    # 文件清理配置
-    FILE_RETENTION_DAYS = 1  # 文件保留天数
+    # 文件清理配置 - 支持环境变量动态配置
+    FILE_RETENTION_DAYS = int(os.environ.get('FILE_RETENTION_DAYS', '1'))  # 文件保留天数
     CLEANUP_INTERVAL_HOURS = 2  # 清理间隔（小时）
     
     # 日期格式
