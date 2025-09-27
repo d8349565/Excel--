@@ -120,6 +120,37 @@
         padding: 0.25rem 0.5rem;
         font-size: 0.875rem;
     }
+    
+    .sort-settings {
+        background-color: #f8f9fa;
+        border: 1px solid #e9ecef;
+        border-radius: 6px;
+        padding: 12px;
+        margin-top: 10px;
+    }
+    
+    .sort-settings h6 {
+        color: #495057;
+        border-bottom: 1px solid #e9ecef;
+        padding-bottom: 5px;
+        margin-bottom: 10px;
+    }
+    
+    #customSortContainer textarea {
+        font-family: monospace;
+        font-size: 0.9em;
+    }
+    
+    .sort-preview {
+        background-color: #fff;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        padding: 8px;
+        font-size: 0.85em;
+        color: #6c757d;
+        max-height: 100px;
+        overflow-y: auto;
+    }
 </style>
 {% endblock %}
 
@@ -338,6 +369,38 @@
                                 <option value="min">最小值</option>
                                 <option value="max">最大值</option>
                             </select>
+                        </div>
+                        <hr>
+                        <h6><i class="bi bi-sort-down"></i> 排序设置</h6>
+                        <div class="mb-3">
+                            <label class="form-label">排序字段</label>
+                            <select id="sortField" class="form-select">
+                                <option value="none">不排序</option>
+                                <option value="x_axis">按X轴字段</option>
+                                <option value="y_axis">按Y轴数值</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">排序方向</label>
+                            <select id="sortDirection" class="form-select">
+                                <option value="asc">升序</option>
+                                <option value="desc">降序</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">排序方式</label>
+                            <select id="sortType" class="form-select">
+                                <option value="alphabetic">字母顺序</option>
+                                <option value="numeric">数值大小</option>
+                                <option value="date">日期时间</option>
+                                <option value="custom">自定义顺序</option>
+                            </select>
+                        </div>
+                        <div class="mb-3" id="customSortContainer" style="display: none;">
+                            <label class="form-label">自定义排序顺序</label>
+                            <textarea id="customSortOrder" class="form-control" rows="3" 
+                                      placeholder="输入排序顺序，每行一项&#10;例如：&#10;一月&#10;二月&#10;三月"></textarea>
+                            <small class="form-text text-muted">每行输入一个值，将按照此顺序排序</small>
                         </div>
                     </div>
                     <div class="col-md-9">

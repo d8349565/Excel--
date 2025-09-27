@@ -1431,6 +1431,10 @@ def create_app(config_name=None):
             y_field = data.get('y_field')
             chart_type = data.get('chart_type', 'bar')
             aggregation = data.get('aggregation', 'sum')
+            sort_field = data.get('sort_field', 'none')  # 排序字段: none, x_axis, y_axis
+            sort_direction = data.get('sort_direction', 'asc')  # 排序方向: asc, desc
+            sort_type = data.get('sort_type', 'alphabetic')  # 排序方式: alphabetic, numeric, date, custom
+            custom_sort_order = data.get('custom_sort_order', [])  # 自定义排序顺序
             
             if not all([filename, x_field, y_field]):
                 return jsonify({
@@ -1452,6 +1456,9 @@ def create_app(config_name=None):
             
             # 读取数据
             import pandas as pd
+            import numpy as np
+            from datetime import datetime
+            
             if filename.lower().endswith('.xlsx'):
                 df = pd.read_excel(file_path)
             elif filename.lower().endswith('.csv'):
@@ -1477,6 +1484,51 @@ def create_app(config_name=None):
                     agg_func = 'mean'
                     
                 grouped = df.groupby(x_field)[y_field].agg(agg_func).reset_index()
+                
+                # 应用排序
+                if sort_field != 'none':
+                    if sort_field == 'x_axis':
+                        sort_column = x_field
+                    elif sort_field == 'y_axis':
+                        sort_column = y_field
+                    else:
+                        sort_column = x_field
+                    
+                    # 根据排序方式进行排序
+                    if sort_type == 'custom' and custom_sort_order:
+                        # 自定义排序
+                        def custom_sort_key(x):
+                            try:
+                                return custom_sort_order.index(str(x))
+                            except ValueError:
+                                return len(custom_sort_order)  # 未找到的项放在最后
+                        
+                        grouped['sort_key'] = grouped[sort_column].apply(custom_sort_key)
+                        grouped = grouped.sort_values('sort_key', ascending=(sort_direction == 'asc'))
+                        grouped = grouped.drop('sort_key', axis=1)
+                        
+                    elif sort_type == 'numeric':
+                        # 数值排序
+                        try:
+                            grouped[sort_column] = pd.to_numeric(grouped[sort_column], errors='coerce')
+                            grouped = grouped.sort_values(sort_column, ascending=(sort_direction == 'asc'))
+                        except:
+                            # 如果转换失败，回退到字母排序
+                            grouped = grouped.sort_values(sort_column, ascending=(sort_direction == 'asc'))
+                            
+                    elif sort_type == 'date':
+                        # 日期排序
+                        try:
+                            grouped[sort_column] = pd.to_datetime(grouped[sort_column], errors='coerce')
+                            grouped = grouped.sort_values(sort_column, ascending=(sort_direction == 'asc'))
+                            grouped[sort_column] = grouped[sort_column].astype(str)
+                        except:
+                            # 如果转换失败，回退到字母排序
+                            grouped = grouped.sort_values(sort_column, ascending=(sort_direction == 'asc'))
+                            
+                    else:
+                        # 字母排序（默认）
+                        grouped = grouped.sort_values(sort_column, ascending=(sort_direction == 'asc'))
                 
                 chart_data = {
                     'labels': grouped[x_field].astype(str).tolist(),

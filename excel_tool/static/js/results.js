@@ -8,7 +8,21 @@ let visualChart = null;
 // 页面加载完成后初始化
 document.addEventListener('DOMContentLoaded', function() {
     loadResults();
+    
+    // 初始化排序设置事件监听器
+    initializeSortSettings();
 });
+
+// 初始化排序设置
+function initializeSortSettings() {
+    // 监听排序方式变化，显示/隐藏自定义排序输入框
+    const sortTypeSelect = document.getElementById('sortType');
+    if (sortTypeSelect) {
+        sortTypeSelect.addEventListener('change', function() {
+            toggleCustomSortInput();
+        });
+    }
+}
 
 // 加载结果列表
 async function loadResults() {
@@ -929,25 +943,8 @@ function renderChartFields(columns) {
     fieldsContainer.innerHTML = html;
 }
 
-// 清除图表字段
-function clearChartFields() {
-    ['xAxisFields', 'yAxisFields'].forEach(id => {
-        const zone = document.getElementById(id);
-        zone.innerHTML = id === 'xAxisFields' ? '拖拽字段到此处作为X轴' : '拖拽字段到此处作为Y轴';
-        zone.classList.remove('has-fields');
-    });
-    
-    if (visualChart) {
-        visualChart.destroy();
-        visualChart = null;
-    }
-    
-    document.getElementById('chartContainer').innerHTML = '';
-    document.getElementById('exportChart').style.display = 'none';
-}
-
 // 生成图表
-function generateChart() {
+async function generateChart() {
     const xAxisFields = Array.from(document.getElementById('xAxisFields').children)
         .filter(el => el.classList.contains('pivot-field'))
         .map(el => el.dataset.field);
@@ -964,11 +961,48 @@ function generateChart() {
         return;
     }
     
-    // 生成图表数据
-    const chartData = generateChartData(currentPreviewData, xAxisFields[0], yAxisFields[0], chartType, aggregationMethod);
-    renderChart(chartData, chartType);
+    // 验证排序设置
+    if (!validateSortSettings()) {
+        return;
+    }
     
-    document.getElementById('exportChart').style.display = 'inline-block';
+    // 获取排序设置
+    const sortSettings = getCurrentSortSettings();
+    
+    // 使用后端API生成图表数据（支持排序）
+    try {
+        const currentFileName = document.getElementById('chartFileName').textContent;
+        
+        const response = await fetch('/api/results/chart-data', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                filename: currentFileName,
+                x_field: xAxisFields[0],
+                y_field: yAxisFields[0],
+                chart_type: chartType,
+                aggregation: aggregationMethod,
+                sort_field: sortSettings.sortField,
+                sort_direction: sortSettings.sortDirection,
+                sort_type: sortSettings.sortType,
+                custom_sort_order: sortSettings.customSortOrder
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            renderChart(data.chart_data, chartType);
+            document.getElementById('exportChart').style.display = 'inline-block';
+        } else {
+            showError('生成图表失败：' + data.message);
+        }
+    } catch (error) {
+        console.error('生成图表失败:', error);
+        showError('生成图表失败，请稍后重试');
+    }
 }
 
 // 生成图表数据
@@ -1033,7 +1067,56 @@ function renderChart(chartData, chartType) {
         visualChart.destroy();
     }
     
-    // 聚合方式的中文名称
+    // 如果是从后端API获取的数据，使用原有的Chart.js格式
+    if (chartData.labels && chartData.datasets) {
+        const config = {
+            type: chartType,
+            data: chartData,
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: chartData.datasets[0].label,
+                        font: {
+                            size: 16,
+                            weight: 'bold'
+                        }
+                    },
+                    legend: {
+                        display: chartType === 'pie'
+                    }
+                },
+                scales: chartType !== 'pie' ? {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'X轴'
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Y轴'
+                        }
+                    }
+                } : {}
+            }
+        };
+        
+        // 为饼图设置颜色
+        if (chartType === 'pie') {
+            config.data.datasets[0].backgroundColor = generateColors(chartData.labels.length);
+            config.data.datasets[0].borderColor = generateColors(chartData.labels.length);
+        }
+        
+        visualChart = new Chart(ctx, config);
+        return;
+    }
+    
+    // 兼容旧版本的本地生成数据格式
     const aggregationNames = {
         'sum': '求和',
         'count': '计数',
@@ -1445,3 +1528,82 @@ document.addEventListener('dragleave', function(e) {
         e.target.classList.remove('dragover');
     }
 });
+
+// 排序设置相关函数
+
+// 切换自定义排序输入框的显示/隐藏
+function toggleCustomSortInput() {
+    const sortType = document.getElementById('sortType').value;
+    const customSortContainer = document.getElementById('customSortContainer');
+    
+    if (sortType === 'custom') {
+        customSortContainer.style.display = 'block';
+    } else {
+        customSortContainer.style.display = 'none';
+    }
+}
+
+// 清除排序设置
+function clearSortSettings() {
+    document.getElementById('sortField').value = 'none';
+    document.getElementById('sortDirection').value = 'asc';
+    document.getElementById('sortType').value = 'alphabetic';
+    document.getElementById('customSortOrder').value = '';
+    toggleCustomSortInput();
+}
+
+// 获取当前排序设置
+function getCurrentSortSettings() {
+    const sortField = document.getElementById('sortField').value;
+    const sortDirection = document.getElementById('sortDirection').value;
+    const sortType = document.getElementById('sortType').value;
+    
+    let customSortOrder = [];
+    if (sortType === 'custom') {
+        const customSortText = document.getElementById('customSortOrder').value.trim();
+        if (customSortText) {
+            customSortOrder = customSortText.split('\n').map(item => item.trim()).filter(item => item);
+        }
+    }
+    
+    return {
+        sortField,
+        sortDirection,
+        sortType,
+        customSortOrder
+    };
+}
+
+// 验证排序设置
+function validateSortSettings() {
+    const sortSettings = getCurrentSortSettings();
+    
+    if (sortSettings.sortType === 'custom' && sortSettings.sortField !== 'none') {
+        if (sortSettings.customSortOrder.length === 0) {
+            showError('使用自定义排序时，请输入自定义排序顺序');
+            return false;
+        }
+    }
+    
+    return true;
+}
+
+// 重置图表字段（包括排序设置）
+function clearChartFields() {
+    ['xAxisFields', 'yAxisFields'].forEach(id => {
+        const zone = document.getElementById(id);
+        zone.innerHTML = id === 'xAxisFields' ? '拖拽字段到此处作为X轴' : '拖拽字段到此处作为Y轴';
+        zone.classList.remove('has-fields');
+    });
+    
+    // 重置排序设置
+    clearSortSettings();
+    
+    if (visualChart) {
+        visualChart.destroy();
+        visualChart = null;
+    }
+    
+    document.getElementById('chartContainer').innerHTML = '';
+    document.getElementById('exportChart').style.display = 'none';
+}
