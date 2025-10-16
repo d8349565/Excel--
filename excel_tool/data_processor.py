@@ -674,25 +674,12 @@ class DataProcessor:
             for rule in fixed_cells_rules:
                 column_name = rule.get('column_name')
                 if column_name and column_name not in columns_to_add:
-                    columns_to_add[column_name] = [""] * len(result_df)
+                    columns_to_add[column_name] = {}  # 改为字典，key为数据源名，value为单元格值
             
-            # 为每一行根据其数据源读取对应的固定单元格值
-            rows_processed = 0
-            rows_matched = 0
-            for idx, row in result_df.iterrows():
-                data_source = row.get('数据源', '')
-                rows_processed += 1
-                
-                # 从数据源找到对应的文件ID
-                file_id = source_to_file.get(data_source)
-                if not file_id:
-                    if rows_processed <= 5:  # 只记录前5行的警告,避免日志过多
-                        logging.warning(f"第{idx}行的数据源'{data_source}'没有对应的文件ID，可用映射: {list(source_to_file.keys())}")
-                    continue
-                
-                rows_matched += 1
-                
-                # 为每个固定单元格列获取该行对应的值
+            # 步骤1: 为每个文件读取一次固定单元格值（每个文件+规则只读取一次）
+            file_cell_cache = {}  # 缓存: (file_id, sheet_name, cell_address) -> cell_value
+            
+            for data_source, file_id in source_to_file.items():
                 for rule in fixed_cells_rules:
                     try:
                         column_name = rule.get('column_name')
@@ -700,45 +687,47 @@ class DataProcessor:
                         sheet_name = rule.get('sheet_name')
                         
                         if not all([column_name, cell_address, sheet_name]):
-                            logging.warning(f"规则不完整: column_name={column_name}, cell_address={cell_address}, sheet_name={sheet_name}")
                             continue
                         
-                        logging.debug(f"读取固定单元格: 文件={file_id}, 工作表={sheet_name}, 单元格={cell_address}")
+                        cache_key = (file_id, sheet_name, cell_address)
                         
-                        # 从该文件的指定工作表读取固定单元格的值
-                        cell_value = file_manager.read_cell_value_by_address(
-                            file_id=file_id,
-                            sheet_name=sheet_name,
-                            cell_address=cell_address,
-                            session_id=session_id
-                        )
+                        # 如果已经读取过，直接使用缓存
+                        if cache_key not in file_cell_cache:
+                            logging.debug(f"读取固定单元格: 数据源={data_source}, 文件={file_id}, 工作表={sheet_name}, 单元格={cell_address}")
+                            
+                            # 从该文件的指定工作表读取固定单元格的值
+                            cell_value = file_manager.read_cell_value_by_address(
+                                file_id=file_id,
+                                sheet_name=sheet_name,
+                                cell_address=cell_address,
+                                session_id=session_id
+                            )
+                            
+                            # 转换为字符串格式
+                            cell_value = str(cell_value) if cell_value is not None and cell_value != "" else ""
+                            file_cell_cache[cache_key] = cell_value
+                            logging.debug(f"读取到的值: {cell_value}")
+                        else:
+                            cell_value = file_cell_cache[cache_key]
                         
-                        logging.debug(f"读取到的值: {cell_value}")
-                        
-                        # 如果读取失败，使用默认值
-                        if cell_value is None:
-                            cell_value = ""
-                        
-                        # 转换为字符串格式
-                        cell_value = str(cell_value) if cell_value is not None else ""
-                        
-                        # 为该列的当前行添加值
-                        columns_to_add[column_name][idx] = cell_value
+                        # 存储: 该数据源对应该列的值
+                        if column_name not in columns_to_add:
+                            columns_to_add[column_name] = {}
+                        columns_to_add[column_name][data_source] = cell_value
                         
                     except Exception as e:
-                        logging.error(f"处理第{idx}行的固定单元格规则时出错: {e}", exc_info=True)
+                        logging.error(f"读取数据源'{data_source}'的固定单元格时出错: {e}", exc_info=True)
                         continue
             
-            # 将提取的数据添加到结果DataFrame中
-            for column_name, values in columns_to_add.items():
-                # 确保值列表长度与DataFrame行数一致
-                while len(values) < len(result_df):
-                    values.append("")
-                
-                result_df[column_name] = values[:len(result_df)]
-                logging.info(f"成功添加固定单元格列: {column_name}")
+            logging.info(f"已从 {len(source_to_file)} 个文件读取固定单元格值")
             
-            logging.info(f"固定单元格处理完成: 处理{rows_processed}行，成功匹配{rows_matched}行")
+            # 步骤2: 批量填充到DataFrame（根据每行的数据源）
+            for column_name, source_values in columns_to_add.items():
+                # 创建新列，根据数据源填充值
+                result_df[column_name] = result_df['数据源'].map(lambda x: source_values.get(x, ""))
+                logging.info(f"成功添加固定单元格列: {column_name}，包含 {len(source_values)} 个不同数据源的值")
+            
+            logging.info(f"固定单元格处理完成: 共添加 {len(columns_to_add)} 列")
             
             if columns_to_add:
                 logging.info(f"成功添加 {len(columns_to_add)} 个固定单元格列")
