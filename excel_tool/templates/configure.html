@@ -135,8 +135,8 @@
                     <i class="bi bi-gear"></i> 文件配置与数据清洗设置
                 </h5>
                 <div class="btn-group" role="group">
-                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="showUnifiedConfig()">
-                        <i class="bi bi-layers"></i> 统一配置
+                    <button type="button" class="btn btn-outline-primary btn-sm" onclick="copyFirstFileConfig()" title="将第一个文件的配置应用到其他文件">
+                        <i class="bi bi-files"></i> 复制第一个文件配置
                     </button>
                     <button type="button" class="btn btn-outline-info btn-sm" onclick="showConfigManager()">
                         <i class="bi bi-gear"></i> 配置管理
@@ -323,16 +323,19 @@
                                     </div>
                                     
                                     <div id="fixed-cells-settings" style="display: none;">
+                                        <div class="alert alert-info">
+                                            <i class="bi bi-info-circle"></i> 
+                                            配置通用规则后，系统会从<strong>所有文件</strong>中同名工作表提取固定单元格数据。
+                                        </div>
                                         <div class="table-responsive">
                                             <table class="table table-bordered">
                                                 <thead>
                                                     <tr>
-                                                        <th style="width: 20%;">源文件</th>
-                                                        <th style="width: 15%;">工作表</th>
-                                                        <th style="width: 12%;">单元格地址</th>
-                                                        <th style="width: 18%;">列名称</th>
-                                                        <th style="width: 15%;">预览值</th>
-                                                        <th style="width: 20%;">操作</th>
+                                                        <th style="width: 20%;">工作表名称</th>
+                                                        <th style="width: 15%;">单元格地址</th>
+                                                        <th style="width: 20%;">列名称</th>
+                                                        <th style="width: 20%;">预览值</th>
+                                                        <th style="width: 15%;">操作</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody id="fixed-cells-table-body">
@@ -465,73 +468,76 @@
     </div>
 </div>
 
-<!-- 统一配置模态框 -->
-<div class="modal fade" id="unifiedConfigModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
+<!-- 复制第一个文件配置模态框 -->
+<div class="modal fade" id="copyFirstConfigModal" tabindex="-1">
+    <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">
-                    <i class="bi bi-layers"></i> 统一配置
+                    <i class="bi bi-files"></i> 复制第一个文件配置
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
                 <div class="alert alert-info">
                     <i class="bi bi-info-circle"></i> 
-                    将当前配置统一应用到所有已选文件。此操作会覆盖各文件的单独配置。
+                    将第一个文件的配置应用到其他文件。
                 </div>
                 
-                <div class="row">
-                    <div class="col-md-4">
-                        <label class="form-label">统一表头行</label>
-                        <input type="number" class="form-control" id="unifiedHeaderRow" value="1" min="1">
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">统一工作表</label>
-                        <select class="form-select" id="unifiedSheetRule">
-                            <option value="keep">保持现有选择</option>
-                            <option value="first">选择第一个工作表</option>
-                            <option value="specific">指定工作表名称</option>
-                        </select>
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">数据源名称规则</label>
-                        <select class="form-select" id="unifiedNamingRule">
-                            <option value="filename">使用文件名</option>
-                            <option value="custom">自定义前缀</option>
-                            <option value="keep">保持现有配置</option>
-                        </select>
-                    </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">第一个文件：<span id="firstFileNameDisplay" class="text-primary"></span></label>
                 </div>
                 
-                <div class="row mt-3" id="specificSheetRow" style="display: none;">
-                    <div class="col-12">
-                        <label class="form-label">指定工作表名称</label>
-                        <input type="text" class="form-control" id="specificSheetName" placeholder="例如：Sheet1">
-                        <small class="form-text text-muted">将尝试在每个文件中查找此工作表，不存在则使用第一个</small>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">选择要复制的配置项：</label>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="copySheetSelect" checked>
+                        <label class="form-check-label" for="copySheetSelect">
+                            工作表选择
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="copyHeaderRow" checked>
+                        <label class="form-check-label" for="copyHeaderRow">
+                            表头行号
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="copySourceName">
+                        <label class="form-check-label" for="copySourceName">
+                            数据源名称格式（将使用第一个文件的命名规则）
+                        </label>
                     </div>
                 </div>
                 
-                <div class="row mt-3" id="customPrefixRow" style="display: none;">
-                    <div class="col-12">
-                        <label class="form-label">自定义前缀</label>
-                        <input type="text" class="form-control" id="customPrefix" placeholder="数据源_">
-                        <small class="form-text text-muted">将在文件名前添加此前缀</small>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">应用到：</label>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="copyTargetScope" id="copyToAll" value="all" checked>
+                        <label class="form-check-label" for="copyToAll">
+                            所有其他文件 (<span id="otherFilesCount">0</span> 个)
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="copyTargetScope" id="copyToSelected" value="selected">
+                        <label class="form-check-label" for="copyToSelected">
+                            选择特定文件
+                        </label>
                     </div>
                 </div>
-
-                <div class="row mt-3">
-                    <div class="col-12">
-                        <label class="form-label">应用到哪些文件</label>
-                        <div id="fileSelectionForUnified">
-                            <!-- 动态生成文件选择 -->
-                        </div>
+                
+                <div id="copyTargetFilesList" class="mb-3" style="display: none;">
+                    <label class="form-label">选择目标文件：</label>
+                    <div id="copyTargetFilesContainer" style="max-height: 200px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 4px; padding: 10px;">
+                        <!-- 动态生成文件列表 -->
                     </div>
                 </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                <button type="button" class="btn btn-primary" onclick="applyUnifiedConfig()">应用配置</button>
+                <button type="button" class="btn btn-primary" onclick="executeCopyFirstConfig()">
+                    <i class="bi bi-check-lg"></i> 应用配置
+                </button>
             </div>
         </div>
     </div>
@@ -813,16 +819,14 @@ function collectConfiguration() {
     if (fixedCellsEnabled) {
         const fixedCellsRules = [];
         document.querySelectorAll('#fixed-cells-table-body tr').forEach(row => {
-            const fileId = row.querySelector('.fixed-cell-file-select')?.value;
-            const sheetName = row.querySelector('.fixed-cell-sheet-select')?.value?.trim();
+            const sheetName = row.querySelector('.fixed-cell-sheet-input')?.value?.trim();
             const cellAddress = row.querySelector('.fixed-cell-address-input')?.value?.trim().toUpperCase();
             const newColumnName = row.querySelector('.fixed-cell-column-name')?.value?.trim();
                 
-            if (fileId && sheetName && cellAddress && newColumnName) {
+            if (sheetName && cellAddress && newColumnName) {
                 // 验证单元格地址格式
                 if (cellAddress.match(/^[A-Z]+[0-9]+$/)) {
                     fixedCellsRules.push({
-                        file_id: fileId,
                         sheet_name: sheetName,
                         cell_address: cellAddress,
                         column_name: newColumnName
@@ -1186,10 +1190,11 @@ function showPreviewModal(previewData, stats) {
         <div class="alert alert-info">
             <strong>预览信息：</strong><br>
             • 合并策略: ${previewData.strategy === 'outer' ? '外连接 (保留所有列)' : '内连接 (只保留共同列)'}<br>
-            • 输入文件: ${stats.input_files} 个<br>
+            • 输入文件: ${stats.input_files} 个${previewData.is_partial_preview ? ` (仅显示前${previewData.preview_files}个文件数据)` : ''}<br>
             • 预计总行数: ${stats.estimated_total_rows} 行<br>
             • 最终列数: ${stats.total_columns} 列${configInfo}${cleaningInfo}<br>
             • 显示前 ${previewData.preview_rows} 行数据
+            ${previewData.is_partial_preview ? '<br><span class="badge bg-warning text-dark">⚡ 快速预览模式：为提高速度，仅加载前3个文件的部分数据</span>' : ''}
         </div>
         
         <div class="table-responsive">
@@ -1199,21 +1204,33 @@ function showPreviewModal(previewData, stats) {
                     table-layout: fixed;
                     width: 100%;
                 }
-                .merge-preview-table th, .merge-preview-table td {
+                .merge-preview-table th {
                     max-width: 200px;
                     overflow: hidden;
                     text-overflow: ellipsis;
                     white-space: nowrap;
                     padding: 4px 8px;
                     border: 1px solid #dee2e6;
-                }
-                .merge-preview-table th {
+                    text-align: center;
                     position: sticky;
                     top: 0;
                     background-color: #343a40;
                     color: white;
                     z-index: 10;
                     font-weight: 600;
+                }
+                .merge-preview-table td {
+                    max-width: 200px;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                    padding: 4px 12px 4px 8px;  /* 右侧留12px空间 */
+                    border: 1px solid #dee2e6;
+                    text-align: center;  /* 默认居中，数字会被覆盖 */
+                }
+                .merge-preview-table td.number-cell {
+                    text-align: right;  /* 数字靠右 */
+                    padding-right: 12px;  /* 右侧留出空间 */
                 }
                 .merge-preview-table td:hover {
                     background-color: #f8f9fa;
@@ -1230,7 +1247,8 @@ function showPreviewModal(previewData, stats) {
                     white-space: normal;
                     z-index: 1000;
                     top: -5px;
-                    left: 0;
+                    left: 50%;
+                    transform: translateX(-50%);
                     max-width: 300px;
                     word-wrap: break-word;
                     box-shadow: 0 2px 5px rgba(0,0,0,0.2);
@@ -1254,7 +1272,12 @@ function showPreviewModal(previewData, stats) {
         row.forEach((cell, index) => {
             const cellValue = cell !== null && cell !== undefined ? String(cell) : '';
             const displayValue = cellValue.length > 25 ? cellValue.substring(0, 25) + '...' : cellValue;
-            html += `<td title="${cellValue.replace(/"/g, '&quot;')}">${displayValue}</td>`;
+            
+            // 判断是否为数字类型
+            const isNumber = typeof cell === 'number' || (!isNaN(cell) && cell !== '' && cell !== null);
+            const cellClass = isNumber ? 'number-cell' : '';
+            
+            html += `<td class="${cellClass}" title="${cellValue.replace(/"/g, '&quot;')}">${displayValue}</td>`;
         });
         html += '</tr>';
     });
@@ -1781,129 +1804,227 @@ function getDragAfterElement(container, y) {
     }, { offset: Number.NEGATIVE_INFINITY }).element;
 }
 
-// ================ 统一配置功能 ================
+// ================ 复制第一个文件配置功能 ================
 
-// 显示统一配置模态框
-function showUnifiedConfig() {
-    // 获取所有文件
+// 显示复制配置对话框
+function copyFirstFileConfig() {
     const fileConfigs = document.querySelectorAll('.file-config');
-    const fileSelectionContainer = document.getElementById('fileSelectionForUnified');
     
-    fileSelectionContainer.innerHTML = '';
+    if (fileConfigs.length < 2) {
+        alert('只有一个文件，无需复制配置');
+        return;
+    }
     
-    fileConfigs.forEach(config => {
-        const fileId = config.dataset.fileId;
-        const checkbox = config.querySelector('.file-enable');
-        const label = config.querySelector('label[for="file_' + fileId + '"]');
-        const fileName = label ? label.textContent.trim() : '未知文件';
+    const firstFile = fileConfigs[0];
+    const firstFileLabel = firstFile.querySelector('label.fw-bold');
+    const firstFileName = firstFileLabel ? firstFileLabel.textContent.trim().split('(')[0].trim() : '第一个文件';
+    
+    // 设置第一个文件名称显示
+    document.getElementById('firstFileNameDisplay').textContent = firstFileName;
+    
+    // 设置其他文件数量
+    document.getElementById('otherFilesCount').textContent = fileConfigs.length - 1;
+    
+    // 生成目标文件列表
+    const targetContainer = document.getElementById('copyTargetFilesContainer');
+    targetContainer.innerHTML = '';
+    
+    for (let i = 1; i < fileConfigs.length; i++) {
+        const targetFile = fileConfigs[i];
+        const fileId = targetFile.dataset.fileId;
+        const label = targetFile.querySelector('label.fw-bold');
+        const fileName = label ? label.textContent.trim().split('(')[0].trim() : `文件 ${i + 1}`;
         
         const div = document.createElement('div');
         div.className = 'form-check';
         div.innerHTML = `
-            <input class="form-check-input unified-file-checkbox" type="checkbox" value="${fileId}" id="unified_${fileId}" ${checkbox.checked ? 'checked' : ''}>
-            <label class="form-check-label" for="unified_${fileId}">
+            <input class="form-check-input copy-target-file" type="checkbox" value="${fileId}" id="copy_target_${fileId}" checked>
+            <label class="form-check-label" for="copy_target_${fileId}">
                 ${fileName}
             </label>
         `;
-        fileSelectionContainer.appendChild(div);
-    });
+        targetContainer.appendChild(div);
+    }
     
-    // 监听命名规则变化
-    document.getElementById('unifiedNamingRule').addEventListener('change', function() {
-        const customPrefixRow = document.getElementById('customPrefixRow');
-        if (this.value === 'custom') {
-            customPrefixRow.style.display = 'block';
-        } else {
-            customPrefixRow.style.display = 'none';
+    // 监听目标范围选择
+    document.getElementById('copyToAll').addEventListener('change', function() {
+        if (this.checked) {
+            document.getElementById('copyTargetFilesList').style.display = 'none';
         }
     });
     
-    // 监听工作表规则变化
-    document.getElementById('unifiedSheetRule').addEventListener('change', function() {
-        const specificSheetRow = document.getElementById('specificSheetRow');
-        if (this.value === 'specific') {
-            specificSheetRow.style.display = 'block';
-        } else {
-            specificSheetRow.style.display = 'none';
+    document.getElementById('copyToSelected').addEventListener('change', function() {
+        if (this.checked) {
+            document.getElementById('copyTargetFilesList').style.display = 'block';
         }
     });
     
-    const modal = new bootstrap.Modal(document.getElementById('unifiedConfigModal'));
+    // 显示模态框
+    const modal = new bootstrap.Modal(document.getElementById('copyFirstConfigModal'));
     modal.show();
 }
 
-// 应用统一配置
-function applyUnifiedConfig() {
-    const headerRow = document.getElementById('unifiedHeaderRow').value;
-    const sheetRule = document.getElementById('unifiedSheetRule').value;
-    const specificSheetName = document.getElementById('specificSheetName').value;
-    const namingRule = document.getElementById('unifiedNamingRule').value;
-    const customPrefix = document.getElementById('customPrefix').value;
+// 执行复制配置
+function executeCopyFirstConfig() {
+    const fileConfigs = document.querySelectorAll('.file-config');
+    const firstFile = fileConfigs[0];
     
-    const selectedFiles = Array.from(document.querySelectorAll('.unified-file-checkbox:checked'))
-        .map(cb => cb.value);
+    // 获取选中的配置项
+    const copySheet = document.getElementById('copySheetSelect').checked;
+    const copyHeader = document.getElementById('copyHeaderRow').checked;
+    const copySourceName = document.getElementById('copySourceName').checked;
     
-    if (selectedFiles.length === 0) {
-        alert('请选择要应用配置的文件');
+    if (!copySheet && !copyHeader && !copySourceName) {
+        alert('请至少选择一个要复制的配置项');
         return;
     }
     
-    selectedFiles.forEach(fileId => {
-        const fileConfig = document.querySelector(`[data-file-id="${fileId}"]`);
-        if (!fileConfig) return;
-        
-        // 应用表头行
-        const headerInput = fileConfig.querySelector('.header-row');
-        if (headerInput) {
-            headerInput.value = headerRow;
+    // 获取目标文件范围
+    const targetScope = document.querySelector('input[name="copyTargetScope"]:checked').value;
+    let targetFiles = [];
+    
+    if (targetScope === 'all') {
+        // 所有其他文件
+        for (let i = 1; i < fileConfigs.length; i++) {
+            targetFiles.push(fileConfigs[i]);
+        }
+    } else {
+        // 选中的文件
+        const selectedCheckboxes = document.querySelectorAll('.copy-target-file:checked');
+        if (selectedCheckboxes.length === 0) {
+            alert('请至少选择一个目标文件');
+            return;
         }
         
-        // 应用工作表规则
-        const sheetSelect = fileConfig.querySelector('.sheet-select');
-        if (sheetSelect && sheetRule !== 'keep') {
-            if (sheetRule === 'first') {
-                // 选择第一个选项
-                if (sheetSelect.options.length > 0) {
-                    sheetSelect.selectedIndex = 0;
-                }
-            } else if (sheetRule === 'specific' && specificSheetName) {
-                // 查找指定的工作表名称
-                const targetOption = Array.from(sheetSelect.options)
-                    .find(option => option.value === specificSheetName || option.textContent === specificSheetName);
-                if (targetOption) {
-                    sheetSelect.value = targetOption.value;
-                } else {
-                    // 如果找不到指定工作表，使用第一个
-                    if (sheetSelect.options.length > 0) {
-                        sheetSelect.selectedIndex = 0;
+        selectedCheckboxes.forEach(checkbox => {
+            const fileId = checkbox.value;
+            const targetFile = document.querySelector(`.file-config[data-file-id="${fileId}"]`);
+            if (targetFile) {
+                targetFiles.push(targetFile);
+            }
+        });
+    }
+    
+    try {
+        // 获取第一个文件的配置
+        const firstSheetSelect = firstFile.querySelector('.sheet-select');
+        const firstHeaderRow = firstFile.querySelector('.header-row');
+        const firstSourceName = firstFile.querySelector('.source-name');
+        
+        const firstSheetValue = firstSheetSelect.value;
+        const firstHeaderRowValue = firstHeaderRow.value;
+        const firstSourceNameValue = firstSourceName.value;
+        
+        let successCount = 0;
+        let failCount = 0;
+        let warnings = [];
+        
+        // 应用到目标文件
+        targetFiles.forEach((targetFile, index) => {
+            try {
+                // 复制工作表选择
+                if (copySheet) {
+                    const targetSheetSelect = targetFile.querySelector('.sheet-select');
+                    if (targetSheetSelect) {
+                        const options = Array.from(targetSheetSelect.options);
+                        const matchingOption = options.find(opt => opt.value === firstSheetValue);
+                        
+                        if (matchingOption) {
+                            targetSheetSelect.value = firstSheetValue;
+                        } else {
+                            warnings.push(`文件 ${index + 2} 没有工作表"${firstSheetValue}"，已使用第一个工作表`);
+                            if (options.length > 0) {
+                                targetSheetSelect.selectedIndex = 0;
+                            }
+                        }
+                        targetSheetSelect.dispatchEvent(new Event('change', { bubbles: true }));
                     }
-                    console.warn(`文件 ${fileId} 中找不到工作表 "${specificSheetName}"，使用第一个工作表`);
                 }
+                
+                // 复制表头行
+                if (copyHeader) {
+                    const targetHeaderRow = targetFile.querySelector('.header-row');
+                    if (targetHeaderRow) {
+                        targetHeaderRow.value = firstHeaderRowValue;
+                        targetHeaderRow.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                }
+                
+                // 复制数据源名称（保留文件自己的原始名称作为基础）
+                if (copySourceName) {
+                    const targetSourceName = targetFile.querySelector('.source-name');
+                    if (targetSourceName && firstSourceNameValue) {
+                        // 这里可以选择直接复制或者使用某种命名规则
+                        // 暂时保持各自的文件名，不强制覆盖
+                        // targetSourceName.value = firstSourceNameValue;
+                    }
+                }
+                
+                successCount++;
+            } catch (error) {
+                console.error(`复制配置到文件 ${index + 2} 失败:`, error);
+                failCount++;
             }
+        });
+        
+        // 关闭模态框
+        const modal = bootstrap.Modal.getInstance(document.getElementById('copyFirstConfigModal'));
+        if (modal) {
+            modal.hide();
         }
         
-        // 应用命名规则
-        const sourceNameInput = fileConfig.querySelector('.source-name');
-        if (sourceNameInput && namingRule !== 'keep') {
-            if (namingRule === 'custom' && customPrefix) {
-                const originalName = sourceNameInput.value.replace(/^.*?_/, ''); // 移除可能存在的前缀
-                sourceNameInput.value = customPrefix + originalName;
-            } else if (namingRule === 'filename') {
-                const label = fileConfig.querySelector('label');
-                if (label) {
-                    const fileName = label.textContent.trim().replace(/\s*\(.*?\)\s*$/, ''); // 移除文件大小信息
-                    const baseName = fileName.replace(/\.[^/.]+$/, ""); // 移除扩展名
-                    sourceNameInput.value = baseName;
-                }
-            }
+        // 显示结果
+        let message = `成功复制配置到 ${successCount} 个文件`;
+        if (failCount > 0) {
+            message += `，${failCount} 个失败`;
         }
+        if (warnings.length > 0) {
+            message += `\n\n注意：\n` + warnings.join('\n');
+        }
+        
+        if (successCount > 0) {
+            if (warnings.length > 0) {
+                alert(message);
+            } else {
+                showSuccessToast(message);
+            }
+        } else {
+            alert('配置复制失败，请检查文件配置');
+        }
+        
+    } catch (error) {
+        console.error('复制配置失败:', error);
+        alert('复制配置时发生错误：' + error.message);
+    }
+}
+
+// 显示成功提示（Toast风格）
+function showSuccessToast(message) {
+    // 创建Toast元素
+    const toastId = 'successToast_' + Date.now();
+    const toastHtml = `
+        <div id="${toastId}" class="toast align-items-center text-white bg-success border-0" role="alert" aria-live="assertive" aria-atomic="true" style="position: fixed; top: 20px; right: 20px; z-index: 9999;">
+            <div class="d-flex">
+                <div class="toast-body">
+                    <i class="bi bi-check-circle-fill me-2"></i>${message}
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+        </div>
+    `;
+    
+    // 添加到页面
+    document.body.insertAdjacentHTML('beforeend', toastHtml);
+    
+    // 显示Toast
+    const toastElement = document.getElementById(toastId);
+    const toast = new bootstrap.Toast(toastElement, { delay: 3000 });
+    toast.show();
+    
+    // 自动移除
+    toastElement.addEventListener('hidden.bs.toast', function() {
+        toastElement.remove();
     });
-    
-    // 关闭模态框
-    const modal = bootstrap.Modal.getInstance(document.getElementById('unifiedConfigModal'));
-    modal.hide();
-    
-    alert(`已对 ${selectedFiles.length} 个文件应用统一配置`);
 }
 
 // ================ 固定单元格配置功能 ================
@@ -1951,18 +2072,8 @@ function addFixedCellRow() {
     
     row.innerHTML = `
         <td>
-            <select class="form-select form-select-sm fixed-cell-file-select" required 
-                    onchange="updateSheetOptions(this, '${rowId}')">
-                <option value="">选择文件</option>
-                ${fileOptions.map(file => 
-                    `<option value="${file.fileId}">${file.filename}</option>`
-                ).join('')}
-            </select>
-        </td>
-        <td>
-            <select class="form-select form-select-sm fixed-cell-sheet-select" required disabled>
-                <option value="">先选择文件</option>
-            </select>
+            <input type="text" class="form-control form-control-sm fixed-cell-sheet-input" 
+                   placeholder="如: 说明" required title="输入工作表名称，此规则将应用于所有文件中的同名工作表">
         </td>
         <td>
             <input type="text" class="form-control form-control-sm fixed-cell-address-input" 
@@ -1998,46 +2109,13 @@ function removeFixedCellRow(button) {
     }
 }
 
-// 更新工作表选项
-async function updateSheetOptions(fileSelect, rowId) {
-    const fileId = fileSelect.value;
-    const sheetSelect = document.querySelector(`#${rowId} .fixed-cell-sheet-select`);
-    
-    if (!fileId) {
-        sheetSelect.innerHTML = '<option value="">先选择文件</option>';
-        sheetSelect.disabled = true;
-        return;
-    }
-    
-    try {
-        // 获取文件的工作表列表
-        const response = await fetch(`/api/file_sheets/${fileId}`);
-        if (response.ok) {
-            const data = await response.json();
-            sheetSelect.innerHTML = '<option value="">选择工作表</option>';
-            data.sheets.forEach(sheet => {
-                sheetSelect.innerHTML += `<option value="${sheet}">${sheet}</option>`;
-            });
-            sheetSelect.disabled = false;
-        } else {
-            throw new Error('获取工作表列表失败');
-        }
-    } catch (error) {
-        console.error('获取工作表失败:', error);
-        sheetSelect.innerHTML = '<option value="">获取失败</option>';
-        sheetSelect.disabled = true;
-    }
-}
-
 // 预览单元格值
 async function previewCellValue(addressInput, rowId) {
     const row = document.getElementById(rowId);
-    const fileSelect = row.querySelector('.fixed-cell-file-select');
-    const sheetSelect = row.querySelector('.fixed-cell-sheet-select');
+    const sheetInput = row.querySelector('.fixed-cell-sheet-input');
     const previewElement = row.querySelector('.fixed-cell-preview-value');
     
-    const fileId = fileSelect.value;
-    const sheetName = sheetSelect.value;
+    const sheetName = sheetInput?.value?.trim();
     const cellAddress = addressInput.value.trim().toUpperCase();
     
     // 验证单元格地址格式
@@ -2047,11 +2125,22 @@ async function previewCellValue(addressInput, rowId) {
         return;
     }
     
-    if (!fileId || !sheetName) {
-        previewElement.textContent = '请先选择文件和工作表';
+    if (!sheetName) {
+        previewElement.textContent = '请输入工作表名称';
         previewElement.className = 'badge bg-warning fixed-cell-preview-value';
         return;
     }
+    
+    // 获取第一个启用的文件用于预览
+    const firstEnabledFile = document.querySelector('.file-config .file-enable:checked');
+    if (!firstEnabledFile) {
+        previewElement.textContent = '请先启用至少一个文件';
+        previewElement.className = 'badge bg-warning fixed-cell-preview-value';
+        return;
+    }
+    
+    const fileConfig = firstEnabledFile.closest('.file-config');
+    const fileId = fileConfig.dataset.fileId;
     
     previewElement.textContent = '预览中...';
     previewElement.className = 'badge bg-info fixed-cell-preview-value';
@@ -2073,9 +2162,10 @@ async function previewCellValue(addressInput, rowId) {
             const data = await response.json();
             if (data.success) {
                 const value = data.value;
+                const fileName = fileConfig.querySelector('label').textContent.trim();
                 previewElement.textContent = value || '(空值)';
                 previewElement.className = 'badge bg-success fixed-cell-preview-value';
-                previewElement.title = `单元格${cellAddress}的值: ${value}`;
+                previewElement.title = `来自【${fileName}】工作表【${sheetName}】单元格${cellAddress}的值: ${value}`;
             } else {
                 previewElement.textContent = data.error || '预览失败';
                 previewElement.className = 'badge bg-danger fixed-cell-preview-value';
@@ -2207,16 +2297,14 @@ function getCurrentConfig() {
     
     if (config.fixedCells.enabled) {
         document.querySelectorAll('#fixed-cells-table-body tr').forEach(row => {
-            const fileId = row.querySelector('.fixed-cell-file-select')?.value;
-            const sheetName = row.querySelector('.fixed-cell-sheet-select')?.value?.trim();
+            const sheetName = row.querySelector('.fixed-cell-sheet-input')?.value?.trim();
             const cellAddress = row.querySelector('.fixed-cell-address-input')?.value?.trim().toUpperCase();
             const newColumnName = row.querySelector('.fixed-cell-column-name')?.value?.trim();
             
-            if (fileId && sheetName && cellAddress && newColumnName) {
+            if (sheetName && cellAddress && newColumnName) {
                 // 验证单元格地址格式
                 if (cellAddress.match(/^[A-Z]+[0-9]+$/)) {
                     config.fixedCells.rules.push({
-                        fileId,
                         sheetName,
                         cellAddress,
                         newColumnName
@@ -2416,23 +2504,11 @@ function applyImportedConfig(config) {
                 addFixedCellRow();
                 const lastRow = tbody.lastElementChild;
                 if (lastRow) {
-                    // 设置文件选择
-                    const fileSelect = lastRow.querySelector('.fixed-cell-file-select');
-                    if (fileSelect) {
-                        fileSelect.value = rule.fileId || '';
-                        // 触发文件选择变化事件以加载工作表
-                        if (rule.fileId) {
-                            updateSheetOptions(fileSelect, lastRow.id);
-                        }
+                    // 设置工作表名称
+                    const sheetInput = lastRow.querySelector('.fixed-cell-sheet-input');
+                    if (sheetInput && rule.sheetName) {
+                        sheetInput.value = rule.sheetName;
                     }
-                    
-                    // 设置工作表选择（需要等待工作表加载完成）
-                    setTimeout(() => {
-                        const sheetSelect = lastRow.querySelector('.fixed-cell-sheet-select');
-                        if (sheetSelect && rule.sheetName) {
-                            sheetSelect.value = rule.sheetName;
-                        }
-                    }, 500);
                     
                     // 设置单元格地址
                     const addressInput = lastRow.querySelector('.fixed-cell-address-input');
@@ -2463,9 +2539,9 @@ function previewCurrentConfig() {
 
 // ================ 配置缓存功能 ================
 
-// 获取缓存配置的存储键名
+// 获取缓存配置的存储键名（全局配置，不依赖具体文件）
 function getCacheKey() {
-    return 'excel_merge_configs_cache';
+    return 'excel_merge_configs_global';
 }
 
 // 从localStorage加载缓存的配置
@@ -2505,10 +2581,14 @@ function updateCachedConfigSelect() {
         const option = document.createElement('option');
         option.value = name;
         
-        // 显示配置名称和保存时间
-        const saveTime = new Date(config.timestamp).toLocaleString('zh-CN');
-        option.textContent = `${name} (${saveTime})`;
-        option.title = `保存时间: ${saveTime}\n版本: ${config.version || '1.0'}`;
+        // 显示配置名称和元数据
+        const metadata = config.metadata || {};
+        const saveTime = metadata.savedAt ? new Date(metadata.savedAt).toLocaleString('zh-CN') : 
+                        (config.timestamp ? new Date(config.timestamp).toLocaleString('zh-CN') : '未知时间');
+        const description = metadata.description || '';
+        
+        option.textContent = `${name}${description ? ' - ' + description : ''} (${saveTime})`;
+        option.title = `配置名称: ${name}\n保存时间: ${saveTime}${description ? '\n适用场景: ' + description : ''}\n版本: ${config.version || '1.0'}`;
         
         select.appendChild(option);
     });
@@ -2529,6 +2609,23 @@ function saveCurrentConfigToCache() {
         const currentConfig = getCurrentConfig();
         const configs = loadCachedConfigs();
         
+        // 添加配置元数据，帮助用户识别适用场景
+        const fileConfigs = document.querySelectorAll('.file-config');
+        const fileCount = fileConfigs.length;
+        const fileTypes = [];
+        fileConfigs.forEach(fc => {
+            const label = fc.querySelector('label')?.textContent || '';
+            const ext = label.match(/\.(xlsx?|csv)$/i);
+            if (ext) fileTypes.push(ext[1]);
+        });
+        
+        currentConfig.metadata = {
+            fileCount: fileCount,
+            fileTypes: [...new Set(fileTypes)].join(', '),
+            savedAt: new Date().toISOString(),
+            description: `${fileCount}个文件的配置 (${[...new Set(fileTypes)].join(', ') || '未知类型'})`
+        };
+        
         // 检查是否已存在同名配置
         if (configs[configName]) {
             if (!confirm(`配置 "${configName}" 已存在，是否覆盖？`)) {
@@ -2540,7 +2637,7 @@ function saveCurrentConfigToCache() {
         configs[configName] = currentConfig;
         
         if (saveCachedConfigs(configs)) {
-            alert(`配置 "${configName}" 已保存到缓存`);
+            alert(`配置 "${configName}" 已保存到缓存\n适用场景: ${currentConfig.metadata.description}`);
             nameInput.value = '';
             updateCachedConfigSelect();
         }
@@ -2670,7 +2767,7 @@ document.addEventListener('DOMContentLoaded', function() {
     setTimeout(initConfigCache, 500); // 延迟初始化，确保所有元素都已加载
     
     // 为所有模态框添加通用的焦点管理
-    const modals = ['configManagerModal', 'previewModal', 'columnTypesModal', 'unifiedConfigModal'];
+    const modals = ['configManagerModal', 'previewModal', 'columnTypesModal', 'copyFirstConfigModal'];
     modals.forEach(modalId => {
         const modalElement = document.getElementById(modalId);
         if (modalElement) {

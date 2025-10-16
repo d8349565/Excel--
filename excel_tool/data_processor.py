@@ -457,13 +457,17 @@ class DataProcessor:
             raise
     
     def process_data(self, dataframes: List[Tuple[pd.DataFrame, str]], 
-                    cleaning_options: Dict[str, Any], file_manager=None, session_id: str = None) -> pd.DataFrame:
+                    cleaning_options: Dict[str, Any], file_manager=None, session_id: str = None,
+                    file_configs: List[Dict] = None) -> pd.DataFrame:
         """
         完整的数据处理流程
         
         Args:
             dataframes: DataFrame列表
             cleaning_options: 清洗选项
+            file_manager: 文件管理器实例
+            session_id: 会话ID
+            file_configs: 文件配置列表，包含文件ID和数据源名称映射
             
         Returns:
             处理后的DataFrame
@@ -513,7 +517,8 @@ class DataProcessor:
                     result_df, 
                     cleaning_options.get('fixed_cells_rules'), 
                     file_manager, 
-                    session_id
+                    session_id,
+                    file_configs
                 )
             
             # 更新最终统计
@@ -620,15 +625,17 @@ class DataProcessor:
             return df  # 返回原始数据框
     
     def extract_fixed_cells_data(self, result_df: pd.DataFrame, fixed_cells_rules: List[Dict], 
-                                file_manager, session_id: str = None) -> pd.DataFrame:
+                                file_manager, session_id: str = None, 
+                                file_configs: List[Dict] = None) -> pd.DataFrame:
         """
         从原始文件中提取固定单元格数据并添加为新列
         
         Args:
             result_df: 已合并的DataFrame
-            fixed_cells_rules: 固定单元格提取规则列表
+            fixed_cells_rules: 固定单元格提取规则列表 (通用规则，不绑定特定文件)
             file_manager: 文件管理器实例，用于读取单元格数据
             session_id: 用户会话ID
+            file_configs: 文件配置列表，包含文件ID和数据源名称的映射
             
         Returns:
             添加了固定单元格列的DataFrame
@@ -638,53 +645,103 @@ class DataProcessor:
                 return result_df
             
             logging.info(f"开始处理 {len(fixed_cells_rules)} 个固定单元格配置")
+            logging.info(f"固定单元格规则: {fixed_cells_rules}")
             
-            # 为每个规则提取数据
-            extracted_data = {}
+            # 检查是否存在"数据源"列，用于匹配文件
+            if '数据源' not in result_df.columns:
+                logging.warning("结果DataFrame中没有'数据源'列，无法按文件匹配固定单元格")
+                return result_df
             
+            # 构建数据源名称到文件ID的映射
+            source_to_file = {}
+            if file_configs:
+                for file_config in file_configs:
+                    # 支持两种命名方式:驼峰(fileId/sourceName)和下划线(file_id/source_name)
+                    source_name = file_config.get('source_name') or file_config.get('sourceName')
+                    file_id = file_config.get('file_id') or file_config.get('fileId')
+                    if source_name and file_id:
+                        source_to_file[source_name] = file_id
+                        logging.debug(f"映射: {source_name} -> {file_id}")
+            
+            logging.info(f"数据源到文件映射: {source_to_file}")
+            
+            if not source_to_file:
+                logging.warning("没有有效的数据源到文件映射，无法提取固定单元格数据")
+                return result_df
+            
+            # 按规则的列名分组，准备为每个新列创建数据
+            columns_to_add = {}
             for rule in fixed_cells_rules:
-                try:
-                    file_id = rule.get('file_id')
-                    column_name = rule.get('column_name')
-                    cell_address = rule.get('cell_address')
-                    sheet_name = rule.get('sheet_name')
-                    
-                    if not column_name or not file_id or not cell_address or not sheet_name:
-                        continue
-                    
-                    # 从原始文件中读取固定单元格的值
-                    cell_value = file_manager.read_cell_value_by_address(
-                        file_id=file_id,
-                        sheet_name=sheet_name,
-                        cell_address=cell_address,
-                        session_id=session_id
-                    )
-                    
-                    # 如果读取失败，使用默认值
-                    if cell_value is None:
-                        cell_value = ""
-                        logging.warning(f"无法读取单元格值 {file_id}[{cell_address}]，使用空值")
-                    
-                    # 转换为字符串格式
-                    cell_value = str(cell_value) if cell_value is not None else ""
-                    
-                    extracted_data[column_name] = cell_value
-                    logging.info(f"成功读取固定单元格: {column_name} = {cell_value} (地址: {cell_address})")
-                    
-                except Exception as e:
-                    logging.error(f"处理固定单元格规则时出错: {e}")
-                    # 设置默认值
-                    if column_name:
-                        extracted_data[column_name] = ""
+                column_name = rule.get('column_name')
+                if column_name and column_name not in columns_to_add:
+                    columns_to_add[column_name] = [""] * len(result_df)
+            
+            # 为每一行根据其数据源读取对应的固定单元格值
+            rows_processed = 0
+            rows_matched = 0
+            for idx, row in result_df.iterrows():
+                data_source = row.get('数据源', '')
+                rows_processed += 1
+                
+                # 从数据源找到对应的文件ID
+                file_id = source_to_file.get(data_source)
+                if not file_id:
+                    if rows_processed <= 5:  # 只记录前5行的警告,避免日志过多
+                        logging.warning(f"第{idx}行的数据源'{data_source}'没有对应的文件ID，可用映射: {list(source_to_file.keys())}")
                     continue
+                
+                rows_matched += 1
+                
+                # 为每个固定单元格列获取该行对应的值
+                for rule in fixed_cells_rules:
+                    try:
+                        column_name = rule.get('column_name')
+                        cell_address = rule.get('cell_address')
+                        sheet_name = rule.get('sheet_name')
+                        
+                        if not all([column_name, cell_address, sheet_name]):
+                            logging.warning(f"规则不完整: column_name={column_name}, cell_address={cell_address}, sheet_name={sheet_name}")
+                            continue
+                        
+                        logging.debug(f"读取固定单元格: 文件={file_id}, 工作表={sheet_name}, 单元格={cell_address}")
+                        
+                        # 从该文件的指定工作表读取固定单元格的值
+                        cell_value = file_manager.read_cell_value_by_address(
+                            file_id=file_id,
+                            sheet_name=sheet_name,
+                            cell_address=cell_address,
+                            session_id=session_id
+                        )
+                        
+                        logging.debug(f"读取到的值: {cell_value}")
+                        
+                        # 如果读取失败，使用默认值
+                        if cell_value is None:
+                            cell_value = ""
+                        
+                        # 转换为字符串格式
+                        cell_value = str(cell_value) if cell_value is not None else ""
+                        
+                        # 为该列的当前行添加值
+                        columns_to_add[column_name][idx] = cell_value
+                        
+                    except Exception as e:
+                        logging.error(f"处理第{idx}行的固定单元格规则时出错: {e}", exc_info=True)
+                        continue
             
             # 将提取的数据添加到结果DataFrame中
-            if extracted_data:
-                for column_name, value in extracted_data.items():
-                    # 为所有行添加相同的固定值
-                    result_df[column_name] = value
+            for column_name, values in columns_to_add.items():
+                # 确保值列表长度与DataFrame行数一致
+                while len(values) < len(result_df):
+                    values.append("")
                 
-                logging.info(f"成功添加 {len(extracted_data)} 个固定单元格列")
+                result_df[column_name] = values[:len(result_df)]
+                logging.info(f"成功添加固定单元格列: {column_name}")
+            
+            logging.info(f"固定单元格处理完成: 处理{rows_processed}行，成功匹配{rows_matched}行")
+            
+            if columns_to_add:
+                logging.info(f"成功添加 {len(columns_to_add)} 个固定单元格列")
             
             return result_df
             

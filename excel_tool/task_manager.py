@@ -418,8 +418,8 @@ def create_merge_task_handler(file_manager, data_processor):
             
             progress_callback(40, "开始数据处理...")
             
-            # 处理数据，传递file_manager和session_id以支持固定单元格功能
-            result_df = data_processor.process_data(dataframes, cleaning_options, file_manager, session_id)
+            # 处理数据，传递file_manager、session_id和file_configs以支持固定单元格功能
+            result_df = data_processor.process_data(dataframes, cleaning_options, file_manager, session_id, file_configs)
             
             progress_callback(80, "开始导出文件...")
             

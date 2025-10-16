@@ -199,6 +199,8 @@ def create_app(config_name=None):
                 return redirect(url_for('index'))
             
             file_ids = []
+            success_count = 0
+            fail_count = 0
             
             for file in uploaded_files:
                 if file.filename == '':
@@ -212,6 +214,7 @@ def create_app(config_name=None):
                     
                     file_info = file_manager.save_uploaded_file(file, file.filename, session_id)
                     file_ids.append(file_info['file_id'])
+                    success_count += 1
                     
                     # 记录文件上传日志
                     user_logger.log_file_upload(
@@ -221,9 +224,15 @@ def create_app(config_name=None):
                         session_id=session_id
                     )
                     
-                    flash(f'文件 {file.filename} 上传成功', 'success')
                 except Exception as e:
-                    flash(f'文件 {file.filename} 上传失败: {str(e)}', 'error')
+                    fail_count += 1
+                    app.logger.error(f'文件 {file.filename} 上传失败: {str(e)}')
+            
+            # 统一显示上传结果
+            if success_count > 0:
+                flash(f'成功上传 {success_count} 个文件', 'success')
+            if fail_count > 0:
+                flash(f'{fail_count} 个文件上传失败', 'error')
             
             if file_ids:
                 return redirect(url_for('configure', file_ids=','.join(file_ids)))
@@ -482,9 +491,14 @@ def create_app(config_name=None):
             if not file_configs:
                 return jsonify({'success': False, 'error': '没有文件配置'})
             
+            # 优化预览速度：只取前3个文件，每个文件只取5行数据
+            preview_file_configs = file_configs[:3]
+            total_files = len(file_configs)
+            is_partial_preview = total_files > 3
+            
             # 准备数据框列表
             dataframes = []
-            for config in file_configs:
+            for config in preview_file_configs:
                 file_id = config['file_id']
                 sheet_name = config.get('sheet_name', 0)
                 header_row = config.get('header_row', 0)
@@ -498,8 +512,8 @@ def create_app(config_name=None):
                 # 读取数据
                 df = app.file_manager.read_full_file(file_id, sheet_name, header_row, session_id)
                 if df is not None:
-                    # 限制预览数据量，每个文件最多取10行
-                    preview_df = df.head(10)
+                    # 限制预览数据量，每个文件最多取5行
+                    preview_df = df.head(5)
                     dataframes.append((preview_df, source_name))
             
             if not dataframes:
@@ -555,7 +569,8 @@ def create_app(config_name=None):
                         configured_df, 
                         cleaning_options.get('fixed_cells_rules'), 
                         app.file_manager, 
-                        session_id
+                        session_id,
+                        preview_file_configs  # 只传递预览的文件配置
                     )
                 
                 # 应用数据清洗选项完成
@@ -566,15 +581,35 @@ def create_app(config_name=None):
                 # 处理NaN值，转换为可序列化的格式
                 preview_result = preview_result.fillna('')  # 将NaN替换为空字符串
                 
+                # 格式化数字列为2位小数(用于显示)
+                formatted_data = []
+                for _, row in preview_result.iterrows():
+                    formatted_row = []
+                    for val in row:
+                        if val == '':
+                            formatted_row.append('')
+                        elif isinstance(val, (int, float)):
+                            # 数字类型:保留2位小数
+                            try:
+                                formatted_row.append(round(float(val), 2))
+                            except:
+                                formatted_row.append(val)
+                        else:
+                            formatted_row.append(val)
+                    formatted_data.append(formatted_row)
+                
                 # 转换为可序列化的格式
                 result_data = {
                     'success': True,
                     'preview_data': {
                         'columns': preview_result.columns.tolist(),
-                        'data': preview_result.values.tolist(),
+                        'data': formatted_data,
                         'total_rows': len(configured_df),
                         'preview_rows': len(preview_result),
-                        'strategy': cleaning_options.get('merge_strategy', 'outer')
+                        'strategy': cleaning_options.get('merge_strategy', 'outer'),
+                        'is_partial_preview': is_partial_preview,
+                        'total_files': total_files,
+                        'preview_files': len(dataframes)
                     },
                     'stats': {
                         'input_files': len(dataframes),
@@ -1051,8 +1086,13 @@ def create_app(config_name=None):
             column_fields = data.get('column_fields', [])
             value_fields = data.get('value_fields', [])
             aggregation = data.get('aggregation', 'sum')
+            show_row_totals = data.get('show_row_totals', True)  # 新增参数
             
             if not filename:
+                return jsonify({
+                    'success': False,
+                    'message': '缺少文件名参数'
+                }), 400
                 return jsonify({
                     'success': False,
                     'message': '缺少文件名参数'
@@ -1203,8 +1243,13 @@ def create_app(config_name=None):
             value_fields = data.get('value_fields', [])
             aggregation = data.get('aggregation', 'sum')
             export_format = data.get('format', 'xlsx')  # xlsx 或 csv
+            show_row_totals = data.get('show_row_totals', True)  # 新增参数
             
             if not filename or not value_fields:
+                return jsonify({
+                    'success': False,
+                    'message': '缺少必要参数'
+                }), 400
                 return jsonify({
                     'success': False,
                     'message': '缺少必要参数'
@@ -1721,4 +1766,4 @@ def cleanup_old_results(app, retention_days: int = 1):
 
 if __name__ == '__main__':
     app = create_app()
-    app.run(debug=False, host='0.0.0.0', port=5000)
+    app.run(debug=True, host='0.0.0.0', port=5000)

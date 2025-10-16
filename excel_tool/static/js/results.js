@@ -433,6 +433,7 @@ function generatePivot() {
         .map(el => el.dataset.field);
     
     const aggregation = document.getElementById('aggregationMethod').value;
+    const showRowTotals = document.getElementById('showRowTotals').checked;
     
     if (rowFields.length === 0 && columnFields.length === 0) {
         showError('请至少选择一个行字段或列字段');
@@ -445,14 +446,14 @@ function generatePivot() {
     }
     
     // 生成透视表（简化版实现）
-    const pivotData = calculatePivot(currentPreviewData, rowFields, columnFields, valueFields, aggregation);
+    const pivotData = calculatePivot(currentPreviewData, rowFields, columnFields, valueFields, aggregation, showRowTotals);
     renderPivotTable(pivotData);
     
     document.getElementById('exportPivot').style.display = 'inline-block';
 }
 
 // 计算透视表数据
-function calculatePivot(data, rowFields, columnFields, valueFields, aggregation) {
+function calculatePivot(data, rowFields, columnFields, valueFields, aggregation, showRowTotals = true) {
     // 这是一个简化的透视表实现
     const result = {};
     const allColumns = new Set();
@@ -510,7 +511,7 @@ function calculatePivot(data, rowFields, columnFields, valueFields, aggregation)
         });
     });
     
-    return { result, allColumns: Array.from(allColumns), rowFields, columnFields, valueFields };
+    return { result, allColumns: Array.from(allColumns), rowFields, columnFields, valueFields, showRowTotals };
 }
 
 // 渲染透视表
@@ -667,6 +668,13 @@ function renderPivotTable(pivotData) {
             </th>`;
         });
     }
+    
+    // 添加行汇总列表头（如果启用）
+    const showRowTotals = pivotData.showRowTotals !== undefined ? pivotData.showRowTotals : true;
+    if (showRowTotals) {
+        html += '<th class="pivot-header value-header text-center" style="background-color: #e9ecef;">行汇总</th>';
+    }
+    
     html += '</tr>';
     
     // 如果有列字段，添加子表头行显示值字段
@@ -683,6 +691,12 @@ function renderPivotTable(pivotData) {
                 </th>`;
             });
         });
+        
+        // 添加行汇总列表头（如果启用）
+        if (showRowTotals) {
+            html += '<th class="pivot-header value-subheader" style="background-color: #e9ecef;">总计</th>';
+        }
+        
         html += '</tr>';
     }
     
@@ -690,14 +704,14 @@ function renderPivotTable(pivotData) {
     
     // 表体 - 优化数据显示
     html += '<tbody id="pivotTableBody">';
-    html += renderPivotTableBody(result, allColumns, rowFields, valueFields, aggregationMethod, avgValue, maxValue);
+    html += renderPivotTableBody(result, allColumns, rowFields, valueFields, aggregationMethod, avgValue, maxValue, showRowTotals);
     html += '</tbody></table></div></div>';
     
     document.getElementById('pivotResult').innerHTML = html;
 }
 
 // 渲染透视表表体
-function renderPivotTableBody(result, allColumns, rowFields, valueFields, aggregationMethod, avgValue, maxValue) {
+function renderPivotTableBody(result, allColumns, rowFields, valueFields, aggregationMethod, avgValue, maxValue, showRowTotals = true) {
     let html = '';
     Object.keys(result).forEach((rowKey, index) => {
         const rowClass = index % 2 === 0 ? '' : 'table-light';
@@ -710,6 +724,8 @@ function renderPivotTableBody(result, allColumns, rowFields, valueFields, aggreg
         });
         
         // 数值数据
+        let rowTotal = 0;
+        let rowCount = 0;
         allColumns.forEach(col => {
             valueFields.forEach(valueField => {
                 const key = col + '|' + valueField;
@@ -718,6 +734,9 @@ function renderPivotTableBody(result, allColumns, rowFields, valueFields, aggreg
                 let cellClass = 'pivot-cell data-cell text-end';
                 
                 if (typeof value === 'number') {
+                    rowTotal += value;
+                    rowCount++;
+                    
                     if (aggregationMethod === 'count') {
                         displayValue = value.toLocaleString();
                     } else {
@@ -741,6 +760,20 @@ function renderPivotTableBody(result, allColumns, rowFields, valueFields, aggreg
                 html += `<td class="${cellClass}" title="${displayValue}">${displayValue}</td>`;
             });
         });
+        
+        // 添加行汇总列（如果启用）
+        if (showRowTotals && rowCount > 0) {
+            let totalDisplay;
+            if (aggregationMethod === 'avg') {
+                totalDisplay = (rowTotal / rowCount).toFixed(2);
+            } else if (aggregationMethod === 'count') {
+                totalDisplay = rowTotal.toLocaleString();
+            } else {
+                totalDisplay = rowTotal.toFixed(2);
+            }
+            html += `<td class="pivot-cell data-cell text-end fw-bold" style="background-color: #f0f0f0;">${totalDisplay}</td>`;
+        }
+        
         html += '</tr>';
     });
     return html;
