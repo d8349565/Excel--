@@ -293,16 +293,10 @@
                                     <small class="text-muted">{{ file.upload_time[:19].replace('T', ' ') }}</small>
                                 </td>
                                 <td>
-                                    <div class="btn-group btn-group-sm">
-                                        <button class="btn btn-outline-primary" 
-                                                onclick="previewFile('{{ file.file_id }}', '{{ file.original_filename }}')">
-                                            <i class="bi bi-eye"></i> 预览
-                                        </button>
-                                        <button class="btn btn-outline-danger" 
-                                                onclick="deleteFile('{{ file.file_id }}', '{{ file.original_filename }}')">
-                                            <i class="bi bi-trash"></i> 删除
-                                        </button>
-                                    </div>
+                                    <button class="btn btn-outline-danger btn-sm" 
+                                            onclick="deleteFile('{{ file.file_id }}', '{{ file.original_filename }}')">
+                                        <i class="bi bi-trash"></i> 删除
+                                    </button>
                                 </td>
                             </tr>
                             {% endfor %}
@@ -333,56 +327,11 @@
 </div>
 {% endif %}
 
-<!-- 文件预览模态框 -->
-<div class="modal fade" id="previewModal" tabindex="-1">
-    <div class="modal-dialog modal-xl">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">
-                    <i class="bi bi-eye"></i> 文件预览
-                </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <div class="row mb-3">
-                    <div class="col-md-6">
-                        <label class="form-label">工作表</label>
-                        <select class="form-select" id="previewSheet" onchange="updatePreview()">
-                        </select>
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label">表头行</label>
-                        <input type="number" class="form-control" id="previewHeaderRow" 
-                               value="0" min="0" onchange="updatePreview()">
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label">预览行数</label>
-                        <input type="number" class="form-control" id="previewRows" 
-                               value="20" min="5" max="100" onchange="updatePreview()">
-                    </div>
-                </div>
-                
-                <div id="previewContent">
-                    <div class="text-center">
-                        <div class="spinner-border" role="status">
-                            <span class="visually-hidden">加载中...</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
-            </div>
-        </div>
-    </div>
-</div>
-
 {% endblock %}
 
 {% block extra_js %}
 <script>
 let selectedFiles = [];
-let currentPreviewFileId = null;
 let draggedFiles = new DataTransfer();
 
 // DOM加载完成后初始化
@@ -763,159 +712,6 @@ function configureSelectedFiles() {
     }
     
     window.location.href = '/configure?file_ids=' + selectedFiles.join(',');
-}
-
-// 预览文件
-function previewFile(fileId, filename) {
-    currentPreviewFileId = fileId;
-    
-    const modal = new bootstrap.Modal(document.getElementById('previewModal'));
-    document.querySelector('#previewModal .modal-title').innerHTML = 
-        '<i class="bi bi-eye"></i> 文件预览 - ' + filename;
-    
-    // 获取文件信息并填充工作表选项
-    fetch('/api/preview/' + fileId)
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                updatePreviewSheetOptions(fileId);
-                modal.show();
-            } else {
-                alert('预览失败：' + data.error);
-            }
-        })
-        .catch(error => {
-            alert('预览失败：' + error.message);
-        });
-}
-
-// 更新工作表选项
-function updatePreviewSheetOptions(fileId) {
-    const fileRow = document.querySelector('input[value="' + fileId + '"]');
-    if (!fileRow) return;
-    
-    const rowElement = fileRow.closest('tr');
-    if (!rowElement) return;
-    
-    const sheetsCell = rowElement.cells[3];
-    if (!sheetsCell) return;
-    
-    const sheetsText = sheetsCell.textContent;
-    
-    const sheetSelect = document.getElementById('previewSheet');
-    if (!sheetSelect) return;
-    
-    sheetSelect.innerHTML = '';
-    
-    if (sheetsText.includes('CSV')) {
-        sheetSelect.innerHTML = '<option value="">CSV</option>';
-    } else {
-        sheetSelect.innerHTML = '<option value="">Sheet1</option>';
-    }
-    
-    updatePreview();
-}
-
-// 更新预览
-function updatePreview() {
-    if (!currentPreviewFileId) return;
-    
-    const sheetName = document.getElementById('previewSheet').value;
-    const headerRow = document.getElementById('previewHeaderRow').value;
-    const rows = document.getElementById('previewRows').value;
-    
-    const url = '/api/preview/' + currentPreviewFileId + '?' + 
-                new URLSearchParams({
-                    sheet_name: sheetName,
-                    header_row: headerRow,
-                    rows: rows
-                });
-    
-    document.getElementById('previewContent').innerHTML = 
-        '<div class="text-center">' +
-        '<div class="spinner-border" role="status">' +
-        '<span class="visually-hidden">加载中...</span>' +
-        '</div>' +
-        '</div>';
-    
-    fetch(url)
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                displayPreviewData(data.data);
-            } else {
-                document.getElementById('previewContent').innerHTML = 
-                    '<div class="alert alert-danger">预览失败：' + data.error + '</div>';
-            }
-        })
-        .catch(error => {
-            document.getElementById('previewContent').innerHTML = 
-                '<div class="alert alert-danger">预览失败：' + error.message + '</div>';
-        });
-}
-
-// 显示预览数据
-function displayPreviewData(data) {
-    if (!data || !data.data || data.data.length === 0) {
-        document.getElementById('previewContent').innerHTML = 
-            '<div class="alert alert-warning">没有数据可预览</div>';
-        return;
-    }
-    
-    const columns = data.columns;
-    const rows = data.data;
-    
-    let html = '<div class="mb-2">' +
-        '<small class="text-muted">' +
-        '共 ' + data.total_rows + ' 行，' + data.total_columns + ' 列' +
-        '</small>' +
-        '</div>' +
-        '<div class="table-responsive">' +
-        '<style>' +
-        '.preview-table-index {' +
-        '    white-space: nowrap;' +
-        '    table-layout: fixed;' +
-        '    width: 100%;' +
-        '}' +
-        '.preview-table-index th, .preview-table-index td {' +
-        '    max-width: 200px;' +
-        '    overflow: hidden;' +
-        '    text-overflow: ellipsis;' +
-        '    white-space: nowrap;' +
-        '    padding: 4px 8px;' +
-        '    border: 1px solid #dee2e6;' +
-        '}' +
-        '.preview-table-index th {' +
-        '    position: sticky;' +
-        '    top: 0;' +
-        '    background-color: #f8f9fa;' +
-        '    z-index: 10;' +
-        '    font-weight: 600;' +
-        '}' +
-        '</style>' +
-        '<table class="table table-sm table-bordered preview-table-index">' +
-        '<thead class="table-light">' +
-        '<tr>';
-    
-    columns.forEach((col, index) => {
-        const width = Math.max(120, Math.min(200, col.length * 10 + 50));
-        html += '<th style="width: ' + width + 'px;" title="' + col + '">' + col + '</th>';
-    });
-    html += '</tr></thead><tbody>';
-    
-    rows.forEach(row => {
-        html += '<tr>';
-        columns.forEach(col => {
-            const value = String(row[col] || '');
-            const displayValue = value.length > 25 ? value.substring(0, 25) + '...' : value;
-            html += '<td title="' + value.replace(/"/g, '&quot;') + '">' + displayValue + '</td>';
-        });
-        html += '</tr>';
-    });
-    
-    html += '</tbody></table></div>';
-    
-    document.getElementById('previewContent').innerHTML = html;
 }
 
 // 删除文件

@@ -598,10 +598,6 @@
                                         </button>
                                     </div>
                                 </div>
-                                <small class="text-muted">
-                                    <i class="bi bi-info-circle"></i> 
-                                    配置会自动保存到浏览器本地存储中，下次访问时可以快速重用。
-                                </small>
                             </div>
                         </div>
                     </div>
@@ -2514,6 +2510,10 @@ function applyImportedConfig(config) {
                     const addressInput = lastRow.querySelector('.fixed-cell-address-input');
                     if (addressInput && rule.cellAddress) {
                         addressInput.value = rule.cellAddress;
+                        // 触发预览更新
+                        if (lastRow.id) {
+                            previewCellValue(addressInput, lastRow.id);
+                        }
                     }
                     
                     // 设置列名
@@ -2711,61 +2711,8 @@ function clearCachedConfigs() {
     }
 }
 
-// 自动保存配置（在用户操作时触发）
-function autoSaveConfig() {
-    try {
-        const currentConfig = getCurrentConfig();
-        const autoSaveName = `自动保存_${new Date().toISOString().slice(0, 19).replace(/[T:]/g, '_')}`;
-        const configs = loadCachedConfigs();
-        
-        // 保留最近的5个自动保存配置
-        const autoSaveConfigs = Object.keys(configs)
-            .filter(name => name.startsWith('自动保存_'))
-            .sort()
-            .slice(-4); // 保留4个，加上新的一个总共5个
-        
-        // 删除老的自动保存配置
-        Object.keys(configs).forEach(name => {
-            if (name.startsWith('自动保存_') && !autoSaveConfigs.includes(name)) {
-                delete configs[name];
-            }
-        });
-        
-        // 添加新的自动保存配置
-        configs[autoSaveName] = currentConfig;
-        
-        saveCachedConfigs(configs);
-        console.log('配置已自动保存:', autoSaveName);
-        
-    } catch (error) {
-        console.warn('自动保存配置失败:', error);
-    }
-}
-
-// 初始化配置缓存功能
-function initConfigCache() {
-    // 页面加载时更新缓存配置列表
-    updateCachedConfigSelect();
-    
-    // 监听表单变化，实现自动保存（防抖）
-    let autoSaveTimer;
-    function debounceAutoSave() {
-        clearTimeout(autoSaveTimer);
-        autoSaveTimer = setTimeout(autoSaveConfig, 5000); // 5秒后自动保存
-    }
-    
-    // 监听关键配置项的变化
-    document.addEventListener('change', function(e) {
-        if (e.target.matches('.file-enable, .sheet-select, .header-row, .source-name, #cleanNumeric, #parseDates, #removeDuplicates, #removeEmptyRows, #keepStrategy, #mergeStrategy, #exportFormat, #exportFilename')) {
-            debounceAutoSave();
-        }
-    });
-}
-
-// 页面加载完成后初始化缓存功能
+// 页面加载完成后初始化
 document.addEventListener('DOMContentLoaded', function() {
-    setTimeout(initConfigCache, 500); // 延迟初始化，确保所有元素都已加载
-    
     // 为所有模态框添加通用的焦点管理
     const modals = ['configManagerModal', 'previewModal', 'columnTypesModal', 'copyFirstConfigModal'];
     modals.forEach(modalId => {
