@@ -4,6 +4,60 @@
 
 {% block extra_css %}
 <style>
+/* 工作表卡片样式 */
+.sheet-config-card {
+    border-left: 3px solid #0d6efd;
+    transition: all 0.2s ease;
+}
+
+.sheet-config-card:hover {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    transform: translateX(2px);
+}
+
+.sheet-config-card .card-body {
+    background-color: #f8f9fa;
+}
+
+.sheet-config-card .sheet-enable:checked ~ label {
+    color: #0d6efd;
+    font-weight: 600;
+}
+
+.file-config-container.opacity-50 {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+/* 工作表容器滚动条样式 */
+.sheets-container {
+    scrollbar-width: thin;
+    scrollbar-color: #0d6efd #f8f9fa;
+}
+
+.sheets-container::-webkit-scrollbar {
+    width: 8px;
+}
+
+.sheets-container::-webkit-scrollbar-track {
+    background: #f8f9fa;
+    border-radius: 4px;
+}
+
+.sheets-container::-webkit-scrollbar-thumb {
+    background: #0d6efd;
+    border-radius: 4px;
+}
+
+.sheets-container::-webkit-scrollbar-thumb:hover {
+    background: #0a58ca;
+}
+
+/* 展开/折叠按钮动画 */
+#toggle_btn i {
+    transition: transform 0.3s ease;
+}
+
 /* 模态框无障碍性改进 */
 .modal.fade {
     transition: opacity 0.15s linear;
@@ -154,54 +208,92 @@
                     </div>
                     
                     {% for file in files %}
-                    <div class="card mb-3 file-config" data-file-id="{{ file.file_id }}">
-                        <div class="card-header">
-                            <div class="form-check">
-                                <input class="form-check-input file-enable" type="checkbox" 
-                                       value="{{ file.file_id }}" id="file_{{ file.file_id }}" checked>
-                                <label class="form-check-label fw-bold" for="file_{{ file.file_id }}">
-                                    <i class="bi bi-file-earmark-{% if file.extension == 'csv' %}text{% else %}spreadsheet{% endif %}"></i>
-                                    {{ file.original_filename }}
-                                    <small class="text-muted">({{ (file.file_size / 1024 / 1024) | round(2) }} MB)</small>
-                                </label>
+                    <div class="card mb-3 file-config-container" data-file-id="{{ file.file_id }}">
+                        <div class="card-header bg-light">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div class="form-check">
+                                    <input class="form-check-input file-enable" type="checkbox" 
+                                           value="{{ file.file_id }}" id="file_{{ file.file_id }}" checked>
+                                    <label class="form-check-label fw-bold" for="file_{{ file.file_id }}">
+                                        <i class="bi bi-file-earmark-{% if file.extension == 'csv' %}text{% else %}spreadsheet{% endif %}"></i>
+                                        {{ file.original_filename }}
+                                        <small class="text-muted">({{ (file.file_size / 1024 / 1024) | round(2) }} MB)</small>
+                                        <span class="badge bg-secondary ms-2">{{ file.sheets|length }} 个工作表</span>
+                                    </label>
+                                </div>
+                                <div>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm me-2" 
+                                            onclick="toggleSheetsContainer('{{ file.file_id }}')"
+                                            id="toggle_btn_{{ file.file_id }}"
+                                            title="展开/折叠工作表列表">
+                                        <i class="bi bi-chevron-down"></i> <span class="toggle-text">展开</span>
+                                    </button>
+                                    <button type="button" class="btn btn-outline-success btn-sm" 
+                                            onclick="addSheetConfig('{{ file.file_id }}')" 
+                                            title="添加工作表配置">
+                                        <i class="bi bi-plus-circle"></i> 添加工作表
+                                    </button>
+                                </div>
                             </div>
                         </div>
-                        <div class="card-body">
-                            <div class="row">
-                                <div class="col-md-4">
-                                    <label class="form-label">工作表</label>
-                                    <select class="form-select sheet-select" name="sheet_{{ file.file_id }}">
-                                        {% for sheet in file.sheets %}
-                                        <option value="{{ sheet }}">{{ sheet }}</option>
-                                        {% endfor %}
-                                    </select>
-                                </div>
-                                <div class="col-md-2">
-                                    <label class="form-label">表头行</label>
-                                    <input type="number" class="form-control header-row" 
-                                           name="header_{{ file.file_id }}" value="1" min="1">
-                                    <small class="form-text text-muted">从第几行开始是表头</small>
-                                </div>
-                                <div class="col-md-3">
-                                    <label class="form-label">数据源名称</label>
-                                    <input type="text" class="form-control source-name" 
-                                           name="source_{{ file.file_id }}" 
-                                           value="{{ file.original_filename.rsplit('.', 1)[0] }}">
-                                </div>
-                                <div class="col-md-3">
-                                    <label class="form-label">操作</label>
-                                    <div>
-                                        <button type="button" class="btn btn-outline-primary btn-sm" 
-                                                onclick="previewFileConfig('{{ file.file_id }}')">
-                                            <i class="bi bi-eye"></i> 预览
-                                        </button>
-                                        <button type="button" class="btn btn-outline-info btn-sm" 
-                                                onclick="detectColumns('{{ file.file_id }}')">
-                                            <i class="bi bi-search"></i> 检测列类型
-                                        </button>
+                        <div class="card-body p-2" id="sheets_body_{{ file.file_id }}" style="display: none;">
+                            <div class="sheets-container" id="sheets_{{ file.file_id }}" style="max-height: 400px; overflow-y: auto;">
+                                <!-- 工作表配置卡片将动态添加到这里 -->
+                                {% for sheet in file.sheets %}
+                                <div class="card mb-2 sheet-config-card" data-sheet-name="{{ sheet }}">
+                                    <div class="card-body py-2">
+                                        <div class="row align-items-center">
+                                            <div class="col-md-3">
+                                                <div class="form-check">
+                                                    <input class="form-check-input sheet-enable" type="checkbox" 
+                                                           id="sheet_{{ file.file_id }}_{{ loop.index }}" 
+                                                           {% if loop.index == 1 %}checked{% endif %}>
+                                                    <label class="form-check-label" for="sheet_{{ file.file_id }}_{{ loop.index }}">
+                                                        <strong><i class="bi bi-file-earmark-spreadsheet"></i> {{ sheet }}</strong>
+                                                    </label>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-2">
+                                                <label class="form-label mb-0 small">表头行</label>
+                                                <input type="number" class="form-control form-control-sm header-row" 
+                                                       value="1" min="1">
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label mb-0 small">数据源名称</label>
+                                                <input type="text" class="form-control form-control-sm source-name" 
+                                                       value="{{ file.original_filename.rsplit('.', 1)[0] }} - {{ sheet }}">
+                                            </div>
+                                            <div class="col-md-4 text-end">
+                                                <button type="button" class="btn btn-outline-primary btn-sm" 
+                                                        onclick="previewSheetConfig('{{ file.file_id }}', '{{ sheet }}', this)" 
+                                                        title="预览此工作表">
+                                                    <i class="bi bi-eye"></i> 预览
+                                                </button>
+                                                <button type="button" class="btn btn-outline-info btn-sm" 
+                                                        onclick="detectSheetColumns('{{ file.file_id }}', '{{ sheet }}', this)" 
+                                                        title="检测此工作表列类型">
+                                                    <i class="bi bi-search"></i> 检测
+                                                </button>
+                                                {% if loop.index > 1 %}
+                                                <button type="button" class="btn btn-outline-danger btn-sm" 
+                                                        onclick="removeSheetConfig(this)" 
+                                                        title="移除此工作表">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                                {% endif %}
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
+                                {% endfor %}
                             </div>
+                            {% if file.sheets|length > 5 %}
+                            <div class="text-center mt-2">
+                                <small class="text-muted">
+                                    <i class="bi bi-info-circle"></i> 工作表列表可滚动查看
+                                </small>
+                            </div>
+                            {% endif %}
                         </div>
                     </div>
                     {% endfor %}
@@ -730,21 +822,28 @@ function collectConfiguration() {
     const cleaningOptions = {};
     const exportOptions = {};
     
-    // 收集文件配置
-    document.querySelectorAll('.file-config').forEach(fileCard => {
-        const checkbox = fileCard.querySelector('.file-enable');
-        if (!checkbox.checked) return;
+    // 收集文件配置（遍历所有文件容器）
+    document.querySelectorAll('.file-config-container').forEach(fileContainer => {
+        const fileCheckbox = fileContainer.querySelector('.file-enable');
+        if (!fileCheckbox.checked) return;
         
-        const fileId = fileCard.dataset.fileId;
-        const sheetName = fileCard.querySelector('.sheet-select').value;
-        const headerRow = parseInt(fileCard.querySelector('.header-row').value) - 1; // 转为0-based
-        const sourceName = fileCard.querySelector('.source-name').value;
+        const fileId = fileContainer.dataset.fileId;
         
-        fileConfigs.push({
-            file_id: fileId,
-            sheet_name: sheetName,
-            header_row: headerRow,
-            source_name: sourceName
+        // 收集该文件下所有启用的工作表配置
+        fileContainer.querySelectorAll('.sheet-config-card').forEach(sheetCard => {
+            const sheetCheckbox = sheetCard.querySelector('.sheet-enable');
+            if (!sheetCheckbox.checked) return;
+            
+            const sheetName = sheetCard.dataset.sheetName;
+            const headerRow = parseInt(sheetCard.querySelector('.header-row').value) - 1; // 转为0-based
+            const sourceName = sheetCard.querySelector('.source-name').value;
+            
+            fileConfigs.push({
+                file_id: fileId,
+                sheet_name: sheetName,
+                header_row: headerRow,
+                source_name: sourceName
+            });
         });
     });
     
@@ -910,64 +1009,28 @@ function submitMergeTask(config) {
     });
 }
 
-// 预览文件配置
-function previewFileConfig(fileId) {
-    const fileCard = document.querySelector(`[data-file-id="${fileId}"]`);
-    const sheetName = fileCard.querySelector('.sheet-select').value;
-    const headerRow = fileCard.querySelector('.header-row').value;
-    
-    const url = `/api/preview/${fileId}?` + 
-                new URLSearchParams({
-                    sheet_name: sheetName,
-                    header_row: parseInt(headerRow) - 1, // 转为0-based
-                    rows: 20
-                });
-    
-    fetch(url)
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                displayPreviewData(data.data, '文件预览');
-                const modal = new bootstrap.Modal(document.getElementById('previewModal'));
-                modal.show();
-            } else {
-                alert('预览失败：' + data.error);
-            }
-        })
-        .catch(error => {
-            alert('预览失败：' + error.message);
-        });
-}
-
-// 检测列类型
-function detectColumns(fileId) {
-    const fileCard = document.querySelector(`[data-file-id="${fileId}"]`);
-    const sheetName = fileCard.querySelector('.sheet-select').value;
-    const headerRow = fileCard.querySelector('.header-row').value;
-    
-    const url = `/api/detect_columns/${fileId}?` + 
-                new URLSearchParams({
-                    sheet_name: sheetName,
-                    header_row: parseInt(headerRow) - 1
-                });
-    
-    fetch(url)
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                displayColumnTypes(data.column_types, data.columns);
-                const modal = new bootstrap.Modal(document.getElementById('columnTypesModal'));
-                modal.show();
-            } else {
-                alert('检测失败：' + data.error);
-            }
-        })
-        .catch(error => {
-            alert('检测失败：' + error.message);
-        });
-}
-
-// 显示预览数据
+// 文件启用/禁用处理
+document.addEventListener('change', function(e) {
+    if (e.target.classList.contains('file-enable')) {
+        const fileContainer = e.target.closest('.file-config-container');
+        if (!fileContainer) return;
+        
+        const sheetsContainer = fileContainer.querySelector('.sheets-container');
+        if (!sheetsContainer) return;
+        
+        if (e.target.checked) {
+            fileContainer.classList.remove('opacity-50');
+            sheetsContainer.querySelectorAll('input, button').forEach(el => {
+                if (el) el.disabled = false;
+            });
+        } else {
+            fileContainer.classList.add('opacity-50');
+            sheetsContainer.querySelectorAll('input, button').forEach(el => {
+                if (el) el.disabled = true;
+            });
+        }
+    }
+});
 function displayPreviewData(data, title = '数据预览') {
     document.querySelector('#previewModal .modal-title').innerHTML = 
         `<i class="bi bi-eye"></i> ${title}`;
@@ -1325,24 +1388,31 @@ document.addEventListener('change', function(e) {
 function loadColumnsForConfig() {
     const fileConfigs = [];
     
-    // 收集已启用的文件配置
-    document.querySelectorAll('.file-config').forEach(fileCard => {
-        const checkbox = fileCard.querySelector('.file-enable');
-        if (!checkbox.checked) return;
+    // 收集已启用的文件和工作表配置
+    document.querySelectorAll('.file-config-container').forEach(fileContainer => {
+        const fileCheckbox = fileContainer.querySelector('.file-enable');
+        if (!fileCheckbox.checked) return;
         
-        const fileId = fileCard.dataset.fileId;
-        const sheetName = fileCard.querySelector('.sheet-select').value;
-        const headerRow = parseInt(fileCard.querySelector('.header-row').value) - 1;
+        const fileId = fileContainer.dataset.fileId;
         
-        fileConfigs.push({
-            file_id: fileId,
-            sheet_name: sheetName,
-            header_row: headerRow
+        // 收集该文件下所有启用的工作表
+        fileContainer.querySelectorAll('.sheet-config-card').forEach(sheetCard => {
+            const sheetCheckbox = sheetCard.querySelector('.sheet-enable');
+            if (!sheetCheckbox.checked) return;
+            
+            const sheetName = sheetCard.dataset.sheetName;
+            const headerRow = parseInt(sheetCard.querySelector('.header-row').value) - 1;
+            
+            fileConfigs.push({
+                file_id: fileId,
+                sheet_name: sheetName,
+                header_row: headerRow
+            });
         });
     });
     
     if (fileConfigs.length === 0) {
-        alert('请先选择要合并的文件');
+        alert('请先启用至少一个工作表');
         return;
     }
     
@@ -1804,14 +1874,14 @@ function getDragAfterElement(container, y) {
 
 // 显示复制配置对话框
 function copyFirstFileConfig() {
-    const fileConfigs = document.querySelectorAll('.file-config');
+    const fileContainers = document.querySelectorAll('.file-config-container');
     
-    if (fileConfigs.length < 2) {
+    if (fileContainers.length < 2) {
         alert('只有一个文件，无需复制配置');
         return;
     }
     
-    const firstFile = fileConfigs[0];
+    const firstFile = fileContainers[0];
     const firstFileLabel = firstFile.querySelector('label.fw-bold');
     const firstFileName = firstFileLabel ? firstFileLabel.textContent.trim().split('(')[0].trim() : '第一个文件';
     
@@ -1819,14 +1889,14 @@ function copyFirstFileConfig() {
     document.getElementById('firstFileNameDisplay').textContent = firstFileName;
     
     // 设置其他文件数量
-    document.getElementById('otherFilesCount').textContent = fileConfigs.length - 1;
+    document.getElementById('otherFilesCount').textContent = fileContainers.length - 1;
     
     // 生成目标文件列表
     const targetContainer = document.getElementById('copyTargetFilesContainer');
     targetContainer.innerHTML = '';
     
-    for (let i = 1; i < fileConfigs.length; i++) {
-        const targetFile = fileConfigs[i];
+    for (let i = 1; i < fileContainers.length; i++) {
+        const targetFile = fileContainers[i];
         const fileId = targetFile.dataset.fileId;
         const label = targetFile.querySelector('label.fw-bold');
         const fileName = label ? label.textContent.trim().split('(')[0].trim() : `文件 ${i + 1}`;
@@ -1862,13 +1932,13 @@ function copyFirstFileConfig() {
 
 // 执行复制配置
 function executeCopyFirstConfig() {
-    const fileConfigs = document.querySelectorAll('.file-config');
-    const firstFile = fileConfigs[0];
+    const fileContainers = document.querySelectorAll('.file-config-container');
+    const firstFile = fileContainers[0];
     
     // 获取选中的配置项
-    const copySheet = document.getElementById('copySheetSelect').checked;
-    const copyHeader = document.getElementById('copyHeaderRow').checked;
-    const copySourceName = document.getElementById('copySourceName').checked;
+    const copySheet = document.getElementById('copySheetSelect')?.checked || false;
+    const copyHeader = document.getElementById('copyHeaderRow')?.checked || false;
+    const copySourceName = document.getElementById('copySourceName')?.checked || false;
     
     if (!copySheet && !copyHeader && !copySourceName) {
         alert('请至少选择一个要复制的配置项');
@@ -1876,13 +1946,13 @@ function executeCopyFirstConfig() {
     }
     
     // 获取目标文件范围
-    const targetScope = document.querySelector('input[name="copyTargetScope"]:checked').value;
+    const targetScope = document.querySelector('input[name="copyTargetScope"]:checked')?.value || 'all';
     let targetFiles = [];
     
     if (targetScope === 'all') {
         // 所有其他文件
-        for (let i = 1; i < fileConfigs.length; i++) {
-            targetFiles.push(fileConfigs[i]);
+        for (let i = 1; i < fileContainers.length; i++) {
+            targetFiles.push(fileContainers[i]);
         }
     } else {
         // 选中的文件
@@ -1894,7 +1964,7 @@ function executeCopyFirstConfig() {
         
         selectedCheckboxes.forEach(checkbox => {
             const fileId = checkbox.value;
-            const targetFile = document.querySelector(`.file-config[data-file-id="${fileId}"]`);
+            const targetFile = document.querySelector(`.file-config-container[data-file-id="${fileId}"]`);
             if (targetFile) {
                 targetFiles.push(targetFile);
             }
@@ -1902,63 +1972,85 @@ function executeCopyFirstConfig() {
     }
     
     try {
-        // 获取第一个文件的配置
-        const firstSheetSelect = firstFile.querySelector('.sheet-select');
-        const firstHeaderRow = firstFile.querySelector('.header-row');
-        const firstSourceName = firstFile.querySelector('.source-name');
+        // 收集第一个文件中所有启用的工作表配置
+        const firstFileEnabledSheets = [];
+        firstFile.querySelectorAll('.sheet-config-card').forEach(sheetCard => {
+            const sheetCheckbox = sheetCard.querySelector('.sheet-enable');
+            if (sheetCheckbox && sheetCheckbox.checked) {
+                firstFileEnabledSheets.push({
+                    name: sheetCard.dataset.sheetName,
+                    headerRow: sheetCard.querySelector('.header-row')?.value || '1',
+                    sourceName: sheetCard.querySelector('.source-name')?.value || ''
+                });
+            }
+        });
         
-        const firstSheetValue = firstSheetSelect.value;
-        const firstHeaderRowValue = firstHeaderRow.value;
-        const firstSourceNameValue = firstSourceName.value;
+        if (firstFileEnabledSheets.length === 0) {
+            alert('第一个文件没有启用的工作表');
+            return;
+        }
+        
+        console.log('第一个文件启用的工作表:', firstFileEnabledSheets);
         
         let successCount = 0;
         let failCount = 0;
         let warnings = [];
+        let copyDetails = {
+            totalSheets: 0,
+            copiedSheets: 0,
+            skippedSheets: 0
+        };
         
         // 应用到目标文件
-        targetFiles.forEach((targetFile, index) => {
+        targetFiles.forEach((targetFile, fileIndex) => {
             try {
-                // 复制工作表选择
-                if (copySheet) {
-                    const targetSheetSelect = targetFile.querySelector('.sheet-select');
-                    if (targetSheetSelect) {
-                        const options = Array.from(targetSheetSelect.options);
-                        const matchingOption = options.find(opt => opt.value === firstSheetValue);
+                const targetFileName = targetFile.querySelector('label.fw-bold')?.textContent.trim().split('(')[0].trim();
+                
+                // 遍历第一个文件的每个启用工作表
+                firstFileEnabledSheets.forEach(sourceSheet => {
+                    // 在目标文件中查找同名工作表
+                    const targetSheetCard = Array.from(targetFile.querySelectorAll('.sheet-config-card'))
+                        .find(card => card.dataset.sheetName === sourceSheet.name);
+                    
+                    if (targetSheetCard) {
+                        copyDetails.totalSheets++;
                         
-                        if (matchingOption) {
-                            targetSheetSelect.value = firstSheetValue;
-                        } else {
-                            warnings.push(`文件 ${index + 2} 没有工作表"${firstSheetValue}"，已使用第一个工作表`);
-                            if (options.length > 0) {
-                                targetSheetSelect.selectedIndex = 0;
+                        // 复制工作表启用状态
+                        if (copySheet) {
+                            const targetSheetCheckbox = targetSheetCard.querySelector('.sheet-enable');
+                            if (targetSheetCheckbox) {
+                                targetSheetCheckbox.checked = true;
                             }
                         }
-                        targetSheetSelect.dispatchEvent(new Event('change', { bubbles: true }));
+                        
+                        // 复制表头行
+                        if (copyHeader) {
+                            const targetHeaderRow = targetSheetCard.querySelector('.header-row');
+                            if (targetHeaderRow) {
+                                targetHeaderRow.value = sourceSheet.headerRow;
+                            }
+                        }
+                        
+                        // 复制数据源名称模式（保留目标文件名）
+                        if (copySourceName) {
+                            const targetSourceName = targetSheetCard.querySelector('.source-name');
+                            if (targetSourceName && targetFileName) {
+                                // 保持相同的命名模式：文件名 - 工作表名
+                                targetSourceName.value = `${targetFileName} - ${sourceSheet.name}`;
+                            }
+                        }
+                        
+                        copyDetails.copiedSheets++;
+                    } else {
+                        // 目标文件中没有对应的工作表
+                        copyDetails.skippedSheets++;
+                        warnings.push(`文件"${targetFileName}"中没有工作表"${sourceSheet.name}"，已跳过`);
                     }
-                }
-                
-                // 复制表头行
-                if (copyHeader) {
-                    const targetHeaderRow = targetFile.querySelector('.header-row');
-                    if (targetHeaderRow) {
-                        targetHeaderRow.value = firstHeaderRowValue;
-                        targetHeaderRow.dispatchEvent(new Event('change', { bubbles: true }));
-                    }
-                }
-                
-                // 复制数据源名称（保留文件自己的原始名称作为基础）
-                if (copySourceName) {
-                    const targetSourceName = targetFile.querySelector('.source-name');
-                    if (targetSourceName && firstSourceNameValue) {
-                        // 这里可以选择直接复制或者使用某种命名规则
-                        // 暂时保持各自的文件名，不强制覆盖
-                        // targetSourceName.value = firstSourceNameValue;
-                    }
-                }
+                });
                 
                 successCount++;
             } catch (error) {
-                console.error(`复制配置到文件 ${index + 2} 失败:`, error);
+                console.error(`复制配置到文件 ${fileIndex + 2} 失败:`, error);
                 failCount++;
             }
         });
@@ -1970,19 +2062,30 @@ function executeCopyFirstConfig() {
         }
         
         // 显示结果
-        let message = `成功复制配置到 ${successCount} 个文件`;
-        if (failCount > 0) {
-            message += `，${failCount} 个失败`;
+        let message = `配置复制完成！\n`;
+        message += `- 成功处理 ${successCount} 个文件\n`;
+        message += `- 已启用工作表数: ${firstFileEnabledSheets.length}\n`;
+        message += `- 成功复制: ${copyDetails.copiedSheets} 个工作表\n`;
+        
+        if (copyDetails.skippedSheets > 0) {
+            message += `- 跳过: ${copyDetails.skippedSheets} 个工作表（目标文件中不存在）\n`;
         }
-        if (warnings.length > 0) {
-            message += `\n\n注意：\n` + warnings.join('\n');
+        
+        if (failCount > 0) {
+            message += `- 失败: ${failCount} 个文件\n`;
+        }
+        
+        if (warnings.length > 0 && warnings.length <= 5) {
+            message += `\n注意：\n` + warnings.join('\n');
+        } else if (warnings.length > 5) {
+            message += `\n注意：有 ${warnings.length} 个工作表被跳过`;
         }
         
         if (successCount > 0) {
             if (warnings.length > 0) {
                 alert(message);
             } else {
-                showSuccessToast(message);
+                showSuccessToast(message.replace(/\n/g, ' '));
             }
         } else {
             alert('配置复制失败，请检查文件配置');
@@ -2194,7 +2297,7 @@ function loadCachedConfigsForManager() {
 function getCurrentConfig() {
     const config = {
         timestamp: new Date().toISOString(),
-        version: '1.1',
+        version: '1.3',  // 版本升级以支持卡片式多工作表
         files: [],
         cleaning: {},
         columns: [],
@@ -2202,20 +2305,31 @@ function getCurrentConfig() {
         export: {}
     };
     
-    // 文件配置
-    document.querySelectorAll('.file-config').forEach(fileConfig => {
-        const fileId = fileConfig.dataset.fileId;
-        const enabled = fileConfig.querySelector('.file-enable').checked;
-        const sheet = fileConfig.querySelector('.sheet-select').value;
-        const headerRow = fileConfig.querySelector('.header-row').value;
-        const sourceName = fileConfig.querySelector('.source-name').value;
+    // 文件配置（新的卡片式布局）
+    document.querySelectorAll('.file-config-container').forEach(fileContainer => {
+        const fileId = fileContainer.dataset.fileId;
+        const fileEnabled = fileContainer.querySelector('.file-enable').checked;
+        
+        // 收集该文件的所有工作表配置
+        const sheets = [];
+        fileContainer.querySelectorAll('.sheet-config-card').forEach(sheetCard => {
+            const sheetEnabled = sheetCard.querySelector('.sheet-enable').checked;
+            const sheetName = sheetCard.dataset.sheetName;
+            const headerRow = parseInt(sheetCard.querySelector('.header-row').value);
+            const sourceName = sheetCard.querySelector('.source-name').value;
+            
+            sheets.push({
+                name: sheetName,
+                enabled: sheetEnabled,
+                headerRow: headerRow,
+                sourceName: sourceName
+            });
+        });
         
         config.files.push({
             fileId,
-            enabled,
-            sheet,
-            headerRow: parseInt(headerRow),
-            sourceName
+            enabled: fileEnabled,
+            sheets: sheets
         });
     });
     
@@ -2393,19 +2507,94 @@ function applyImportedConfig(config) {
     // 应用文件配置
     if (config.files) {
         config.files.forEach(fileConfig => {
-            const fileElement = document.querySelector(`[data-file-id="${fileConfig.fileId}"]`);
-            if (fileElement) {
-                const enableCheckbox = fileElement.querySelector('.file-enable');
-                const sheetSelect = fileElement.querySelector('.sheet-select');
-                const headerInput = fileElement.querySelector('.header-row');
-                const sourceInput = fileElement.querySelector('.source-name');
-                
-                if (enableCheckbox) enableCheckbox.checked = fileConfig.enabled;
-                if (sheetSelect && sheetSelect.querySelector(`option[value="${fileConfig.sheet}"]`)) {
-                    sheetSelect.value = fileConfig.sheet;
-                }
-                if (headerInput) headerInput.value = fileConfig.headerRow;
-                if (sourceInput) sourceInput.value = fileConfig.sourceName;
+            const fileContainer = document.querySelector(`.file-config-container[data-file-id="${fileConfig.fileId}"]`);
+            if (!fileContainer) return;
+            
+            const fileCheckbox = fileContainer.querySelector('.file-enable');
+            if (fileCheckbox) {
+                fileCheckbox.checked = fileConfig.enabled;
+            }
+            
+            const sheetsContainer = fileContainer.querySelector('.sheets-container');
+            if (!sheetsContainer) return;
+            
+            // 清空现有工作表配置
+            sheetsContainer.innerHTML = '';
+            
+            // 根据配置版本处理不同格式
+            if (config.version === '1.3' && Array.isArray(fileConfig.sheets)) {
+                // v1.3 格式：完整的工作表配置对象数组
+                fileConfig.sheets.forEach((sheetConfig, index) => {
+                    const fileName = fileContainer.querySelector('.fw-bold').textContent.trim().split('(')[0].trim();
+                    const cardHtml = `
+                        <div class="card mb-2 sheet-config-card" data-sheet-name="${sheetConfig.name}">
+                            <div class="card-body py-2">
+                                <div class="row align-items-center">
+                                    <div class="col-md-3">
+                                        <div class="form-check">
+                                            <input class="form-check-input sheet-enable" type="checkbox" 
+                                                   id="sheet_${fileConfig.fileId}_${index}" 
+                                                   ${sheetConfig.enabled ? 'checked' : ''}>
+                                            <label class="form-check-label" for="sheet_${fileConfig.fileId}_${index}">
+                                                <strong><i class="bi bi-file-earmark-spreadsheet"></i> ${sheetConfig.name}</strong>
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label mb-0 small">表头行</label>
+                                        <input type="number" class="form-control form-control-sm header-row" 
+                                               value="${sheetConfig.headerRow}" min="1">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label mb-0 small">数据源名称</label>
+                                        <input type="text" class="form-control form-control-sm source-name" 
+                                               value="${sheetConfig.sourceName}">
+                                    </div>
+                                    <div class="col-md-4 text-end">
+                                        <button type="button" class="btn btn-outline-primary btn-sm" 
+                                                onclick="previewSheetConfig('${fileConfig.fileId}', '${sheetConfig.name}', this)" 
+                                                title="预览此工作表">
+                                            <i class="bi bi-eye"></i> 预览
+                                        </button>
+                                        <button type="button" class="btn btn-outline-info btn-sm" 
+                                                onclick="detectSheetColumns('${fileConfig.fileId}', '${sheetConfig.name}', this)" 
+                                                title="检测此工作表列类型">
+                                            <i class="bi bi-search"></i> 检测
+                                        </button>
+                                        ${index > 0 ? `
+                                        <button type="button" class="btn btn-outline-danger btn-sm" 
+                                                onclick="removeSheetConfig(this)" 
+                                                title="移除此工作表">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                        ` : ''}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    sheetsContainer.insertAdjacentHTML('beforeend', cardHtml);
+                });
+            } else if (Array.isArray(fileConfig.sheets)) {
+                // v1.2 格式兼容：简单的工作表名称数组
+                fileConfig.sheets.forEach((sheetName, index) => {
+                    const fileName = fileContainer.querySelector('.fw-bold').textContent.trim().split('(')[0].trim();
+                    const cardHtml = createSheetConfigCard(
+                        fileConfig.fileId, 
+                        sheetName, 
+                        fileName
+                    );
+                    sheetsContainer.insertAdjacentHTML('beforeend', cardHtml);
+                });
+            } else if (fileConfig.sheet) {
+                // v1.1 及以前格式兼容：单个工作表
+                const fileName = fileContainer.querySelector('.fw-bold').textContent.trim().split('(')[0].trim();
+                const cardHtml = createSheetConfigCard(
+                    fileConfig.fileId, 
+                    fileConfig.sheet, 
+                    fileName
+                );
+                sheetsContainer.insertAdjacentHTML('beforeend', cardHtml);
             }
         });
     }
@@ -2413,6 +2602,7 @@ function applyImportedConfig(config) {
     // 应用数据清洗配置
     if (config.cleaning) {
         const cleaningConfig = config.cleaning;
+        
         if (document.getElementById('cleanNumeric')) document.getElementById('cleanNumeric').checked = cleaningConfig.cleanNumeric;
         if (document.getElementById('parseDates')) document.getElementById('parseDates').checked = cleaningConfig.parseDates;
         if (document.getElementById('removeDuplicates')) document.getElementById('removeDuplicates').checked = cleaningConfig.removeDuplicates;
@@ -2723,11 +2913,178 @@ document.addEventListener('DOMContentLoaded', function() {
                 modalElement.querySelectorAll('button, [data-bs-dismiss]').forEach(element => {
                     element.blur();
                 });
-                // 将焦点返回到主页面
-                document.body.focus();
             });
         }
     });
 });
+
+// ================ 多工作表汇总功能 ================
+
+// 展开/折叠工作表容器
+function toggleSheetsContainer(fileId) {
+    const container = document.getElementById(`sheets_body_${fileId}`);
+    const btn = document.getElementById(`toggle_btn_${fileId}`);
+    const icon = btn.querySelector('i');
+    const text = btn.querySelector('.toggle-text');
+    
+    if (container.style.display === 'none') {
+        container.style.display = 'block';
+        icon.className = 'bi bi-chevron-up';
+        text.textContent = '折叠';
+    } else {
+        container.style.display = 'none';
+        icon.className = 'bi bi-chevron-down';
+        text.textContent = '展开';
+    }
+}
+
+// 添加工作表配置卡片
+function addSheetConfig(fileId) {
+    const container = document.getElementById(`sheets_${fileId}`);
+    const fileContainer = document.querySelector(`[data-file-id="${fileId}"]`);
+    const fileName = fileContainer.querySelector('.fw-bold').textContent.trim().split('(')[0].trim();
+    
+    // 获取可用的工作表列表
+    const existingSheets = Array.from(container.querySelectorAll('.sheet-config-card'))
+        .map(card => card.dataset.sheetName);
+    
+    // 提示用户输入工作表名称
+    const sheetName = prompt('请输入要添加的工作表名称：', 'Sheet' + (existingSheets.length + 1));
+    
+    if (!sheetName || !sheetName.trim()) {
+        return;
+    }
+    
+    if (existingSheets.includes(sheetName.trim())) {
+        alert('该工作表已存在！');
+        return;
+    }
+    
+    const sheetCard = createSheetConfigCard(fileId, sheetName.trim(), fileName);
+    container.insertAdjacentHTML('beforeend', sheetCard);
+    
+    showSuccessToast(`已添加工作表：${sheetName}`);
+}
+
+// 创建工作表配置卡片HTML
+function createSheetConfigCard(fileId, sheetName, fileName) {
+    const cardId = `sheet_${fileId}_${Date.now()}`;
+    return `
+        <div class="card mb-2 sheet-config-card" data-sheet-name="${sheetName}">
+            <div class="card-body py-2">
+                <div class="row align-items-center">
+                    <div class="col-md-3">
+                        <div class="form-check">
+                            <input class="form-check-input sheet-enable" type="checkbox" 
+                                   id="${cardId}" checked>
+                            <label class="form-check-label" for="${cardId}">
+                                <strong><i class="bi bi-file-earmark-spreadsheet"></i> ${sheetName}</strong>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label mb-0 small">表头行</label>
+                        <input type="number" class="form-control form-control-sm header-row" 
+                               value="1" min="1">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label mb-0 small">数据源名称</label>
+                        <input type="text" class="form-control form-control-sm source-name" 
+                               value="${fileName} - ${sheetName}">
+                    </div>
+                    <div class="col-md-4 text-end">
+                        <button type="button" class="btn btn-outline-primary btn-sm" 
+                                onclick="previewSheetConfig('${fileId}', '${sheetName}', this)" 
+                                title="预览此工作表">
+                            <i class="bi bi-eye"></i> 预览
+                        </button>
+                        <button type="button" class="btn btn-outline-info btn-sm" 
+                                onclick="detectSheetColumns('${fileId}', '${sheetName}', this)" 
+                                title="检测此工作表列类型">
+                            <i class="bi bi-search"></i> 检测
+                        </button>
+                        <button type="button" class="btn btn-outline-danger btn-sm" 
+                                onclick="removeSheetConfig(this)" 
+                                title="移除此工作表">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+// 移除工作表配置
+function removeSheetConfig(button) {
+    const card = button.closest('.sheet-config-card');
+    const sheetName = card.dataset.sheetName;
+    
+    if (confirm(`确定要移除工作表"${sheetName}"的配置吗？`)) {
+        card.remove();
+        showSuccessToast(`已移除工作表：${sheetName}`);
+    }
+}
+
+// 预览工作表配置
+function previewSheetConfig(fileId, sheetName, button) {
+    const card = button.closest('.sheet-config-card');
+    const headerRow = card.querySelector('.header-row').value;
+    
+    const url = `/api/preview/${fileId}?` + 
+                new URLSearchParams({
+                    sheet_name: sheetName,
+                    header_row: parseInt(headerRow) - 1,
+                    rows: 20
+                });
+    
+    fetch(url)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                displayPreviewData(data.data, `工作表预览 - ${sheetName}`);
+                const modal = new bootstrap.Modal(document.getElementById('previewModal'));
+                modal.show();
+            } else {
+                alert('预览失败：' + data.error);
+            }
+        })
+        .catch(error => {
+            alert('预览失败：' + error.message);
+        });
+}
+
+// 检测工作表列类型
+function detectSheetColumns(fileId, sheetName, button) {
+    const card = button.closest('.sheet-config-card');
+    const headerRow = card.querySelector('.header-row').value;
+    
+    const url = `/api/detect_columns/${fileId}?` + 
+                new URLSearchParams({
+                    sheet_name: sheetName,
+                    header_row: parseInt(headerRow) - 1
+                });
+    
+    fetch(url)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                displayColumnTypes(data.column_types, data.columns);
+                const modal = new bootstrap.Modal(document.getElementById('columnTypesModal'));
+                modal.show();
+            } else {
+                alert('检测失败：' + data.error);
+            }
+        })
+        .catch(error => {
+            alert('检测失败：' + error.message);
+        });
+}
+
+// 旧的切换多工作表函数（已废弃，但保留以兼容）
+function toggleMultipleSheets() {
+    // 不再需要此函数，但保留空实现以防其他地方调用
+    console.log('toggleMultipleSheets 已废弃，现在默认支持多工作表');
+}
 </script>
 {% endblock %}
